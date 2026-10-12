@@ -17,3 +17,8 @@ Prompt:
 > retouching look. No text, no logos, no watermark, no jewelry, no glasses.
 
 Sam, the other demo profile, keeps the initials avatar.
+
+The weekly analysis in `docs/screenshots/dashboard-*.png` and `analysis.gif` was written by
+`gpt-5.4-mini` from the same fictional data (`scripts/seed_demo.py`). The live demo has no AI
+behind it: `demo/demo.js` fills fixed sentences with the demo's numbers and streams them like
+a model would.

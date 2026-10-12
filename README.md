@@ -25,7 +25,9 @@ AI-generated, not a real person ([docs/demo](docs/demo/README.md)).
 Try it at **<https://brorlandi.github.io/miscale-dashboard/>**. It is the same dashboard
 running entirely in your browser, with made-up data for two fictional people. It needs no
 scale, no Bluetooth and no server. Press **▶ Play demo** to watch a weigh-in from start to
-finish. Changes you make stay in the page and are gone when you reload it.
+finish; the tour ends with Alex's weekly analysis being written in its card. That text is
+simulated (fixed sentences filled in with the demo's numbers), since the demo has no AI behind
+it. Changes you make stay in the page and are gone when you reload it.
 
 ## Features
 
@@ -43,6 +45,10 @@ finish. Changes you make stay in the page and are gone when you reload it.
   days, a year or all time.
 - **Notifications (optional)** for every weigh-in, through a generic JSON webhook or your
   own Telegram bot.
+- **AI weekly analysis (optional).** Once a week an AI model of your choice (OpenAI,
+  OpenRouter, or a local Ollama) reads the week's numbers and writes a short summary: what
+  improved, what needs attention, and what to try next week. It is typed into the dashboard
+  live as the model writes it, and goes out with the notifications.
 - English and Portuguese (Brazil); kg or lb; light, dark or automatic theme.
 - **Installable on your phone** as an app (PWA), with offline shell.
 - One container, SQLite, no external services. Chart.js is bundled, so it works offline.
@@ -168,6 +174,12 @@ unit, the language and the tolerance for recognizing people are changed in the w
 | `MISCALE_TELEGRAM_TOKEN` | empty | Bot token from [@BotFather](https://t.me/BotFather) |
 | `MISCALE_TELEGRAM_CHAT_ID` | empty | Chat that receives the messages |
 | `MISCALE_NOTIFY_WAIT` | `25` | Seconds to wait for the impedance before notifying |
+| `MISCALE_AI_API_KEY` | empty | Turns on the [AI weekly analysis](#ai-weekly-analysis-optional) |
+| `MISCALE_AI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible API |
+| `MISCALE_AI_MODEL` | `gpt-5.4-mini` | Model, or a comma-separated list tried in order |
+| `MISCALE_AI_ENABLED` | empty | `true` turns the analysis on without a key (local Ollama) |
+| `MISCALE_AI_WEEKDAY` / `MISCALE_AI_HOUR` | `5` / `9` | When the weekly analysis runs (0 = Monday; default Saturday 9:00) |
+| `MISCALE_AI_LANG` | `MISCALE_LANG` | Language of the analysis: `en` or `pt-BR` |
 | `MISCALE_SCANNER` | `on` | `off` disables Bluetooth (development and demos) |
 | `MISCALE_LOG_LEVEL` | `INFO` | Python log level |
 
@@ -203,6 +215,62 @@ Home Assistant (`/api/webhook/<id>`) or anything else that accepts JSON:
   "message": "⚖️ Alex · 81.40 kg\n...",
   "profile": { "id": 1, "name": "Alex" },
   "measurement": { "id": 42, "measured_at": "2026-10-12T07:15:03", "weight_kg": 81.4, "impedance": 478, "metrics": { "body_fat": 25.0, "...": "..." } }
+}
+```
+
+## AI weekly analysis (optional)
+
+![The weekly analysis being typed in as the model writes it](docs/screenshots/analysis.gif)
+
+Once a week, the server sends each person's numbers to a language model and shows its
+answer in a "Weekly analysis" card: a short summary of the week, then *What improved*,
+*What needs attention* and *For next week*. The model is told to look at averages and trends
+rather than single readings, to say when there are too few weigh-ins, and to stay away from
+medical advice. The text appears in every open browser as the model writes it, is saved in
+the database, and is sent through the [notifications](#notifications) when they are set up.
+"Generate now" writes one on demand for the last 7 days.
+
+It is off by default. Without a key the card only explains how to turn it on, and nothing
+leaves your network. It works with any OpenAI-compatible chat API:
+
+```bash
+# OpenAI
+MISCALE_AI_API_KEY=sk-...
+# MISCALE_AI_MODEL=gpt-5.4-mini           (the default)
+
+# OpenRouter: any model it offers; a comma-separated list falls back in order
+MISCALE_AI_API_KEY=sk-or-...
+MISCALE_AI_BASE_URL=https://openrouter.ai/api/v1
+MISCALE_AI_MODEL=openai/gpt-5.4-mini,openai/gpt-5.4-nano
+
+# Ollama on your own machine: no key and nothing leaves your network
+MISCALE_AI_ENABLED=true
+MISCALE_AI_BASE_URL=http://192.168.1.10:11434/v1
+MISCALE_AI_MODEL=llama3.2
+```
+
+LM Studio, llama.cpp's server, vLLM and the like work the same way with their own base URL.
+The analysis runs every Saturday at 9:00 for everyone who weighed in that week (change it
+with `MISCALE_AI_WEEKDAY` and `MISCALE_AI_HOUR`; if the server is off then, it catches up
+within two days). It is written in `MISCALE_AI_LANG`, which defaults to `MISCALE_LANG`.
+
+**Cost.** One analysis is a single request of a few thousand tokens, so with a small model
+like `gpt-5.4-mini` a year of weekly analyses for two people costs about a dollar. A local
+model costs nothing.
+
+**Privacy.** The provider receives the week's weigh-ins and body composition, the weekly
+averages of the last 8 weeks, and the person's first name, age, height and sex. Nothing else
+is sent. If you'd rather keep everything at home, use Ollama or another local server.
+
+The webhook gets the analysis with `"event": "analysis"`:
+
+```json
+{
+  "event": "analysis",
+  "text": "🧠 Weekly analysis · Alex (Oct 4 – Oct 10)\n\nYour weight ...",
+  "message": "🧠 Weekly analysis · Alex (Oct 4 – Oct 10)\n\nYour weight ...",
+  "profile": { "id": 1, "name": "Alex" },
+  "analysis": { "id": 7, "week_start": "2026-10-04", "week_end": "2026-10-10", "kind": "weekly", "model": "gpt-5.4-mini", "text": "..." }
 }
 ```
 
@@ -252,12 +320,14 @@ app/
   body.py       body composition formulas
   db.py         SQLite
   notify.py     webhook and Telegram
+  analysis.py   optional AI weekly analysis (any OpenAI-compatible API)
   main.py       FastAPI app, REST API and WebSocket
   static/       the dashboard (one HTML file, no build step)
 ```
 
-The REST API is documented at `/docs` (OpenAPI). The browser gets live packets and new
-measurements over the `/ws` WebSocket.
+The REST API is documented at `/docs` (OpenAPI). The browser gets live packets, new
+measurements and the weekly analysis (piece by piece, as the model writes it) over the `/ws`
+WebSocket.
 
 ## Development
 

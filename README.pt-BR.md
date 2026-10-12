@@ -26,7 +26,9 @@ português: ela segue o idioma do navegador, e dá para trocar em Configuraçõe
 Experimente em **<https://brorlandi.github.io/miscale-dashboard/>**. É o mesmo painel rodando
 inteiro no navegador, com dados inventados de duas pessoas fictícias. Não precisa de balança,
 de Bluetooth nem de servidor. Toque em **▶ Iniciar demo** para ver uma pesagem do começo ao
-fim. O que você mudar fica só na página e some quando ela é recarregada.
+fim; o passeio termina com a análise da semana do Alex sendo escrita no card. Esse texto é
+simulado (frases fixas preenchidas com os números da demonstração), porque a demo não tem IA
+por trás. O que você mudar fica só na página e some quando ela é recarregada.
 
 ## Recursos
 
@@ -44,6 +46,10 @@ fim. O que você mudar fica só na página e some quando ela é recarregada.
   ano ou tudo.
 - **Avisos (opcionais)** de cada pesagem, por um webhook JSON genérico ou pelo seu próprio bot
   do Telegram.
+- **Análise semanal com IA (opcional).** Uma vez por semana, um modelo de IA à sua escolha
+  (OpenAI, OpenRouter ou um Ollama local) lê os números da semana e escreve um resumo curto: o
+  que melhorou, o que pede atenção e o que tentar na próxima semana. O texto aparece no painel
+  sendo digitado enquanto o modelo escreve, e também vai pelos avisos.
 - Inglês e português; kg ou lb; tema claro, escuro ou automático.
 - **Instala no celular** como app (PWA).
 - Um container, SQLite e nenhum serviço externo. O Chart.js vem junto, então funciona offline.
@@ -102,6 +108,54 @@ estão no [README em inglês](README.md#install-without-docker). As variáveis m
 | `MISCALE_LANG` | Idioma dos avisos: `en` ou `pt-BR` |
 | `MISCALE_WEBHOOK_URL` | POST em JSON a cada pesagem |
 | `MISCALE_TELEGRAM_TOKEN` / `MISCALE_TELEGRAM_CHAT_ID` | Avisos pelo seu bot do Telegram |
+| `MISCALE_AI_API_KEY` | Liga a [análise semanal com IA](#análise-semanal-com-ia-opcional) |
+
+## Análise semanal com IA (opcional)
+
+![A análise da semana sendo digitada enquanto o modelo escreve](docs/screenshots/analysis.gif)
+
+Uma vez por semana, o servidor manda os números de cada pessoa para um modelo de linguagem e
+mostra a resposta no card "Análise da semana": um resumo curto da semana e depois *O que
+melhorou*, *O que pede atenção* e *Para a próxima semana*. O modelo é instruído a olhar médias
+e tendências em vez de pesagens isoladas, a avisar quando há poucas pesagens e a não dar
+orientação médica. O texto aparece em todo navegador aberto enquanto o modelo escreve, fica
+salvo no banco e vai pelos avisos (webhook ou Telegram), se estiverem configurados. "Gerar
+agora" escreve uma análise dos últimos 7 dias na hora.
+
+Vem desligada. Sem chave, o card só explica como ligar, e nada sai da sua rede. Funciona com
+qualquer API de chat compatível com a da OpenAI:
+
+```bash
+# OpenAI
+MISCALE_AI_API_KEY=sk-...
+# MISCALE_AI_MODEL=gpt-5.4-mini           (o padrão)
+
+# OpenRouter: qualquer modelo de lá; uma lista separada por vírgulas é tentada em ordem
+MISCALE_AI_API_KEY=sk-or-...
+MISCALE_AI_BASE_URL=https://openrouter.ai/api/v1
+MISCALE_AI_MODEL=openai/gpt-5.4-mini,openai/gpt-5.4-nano
+
+# Ollama na sua máquina: sem chave, e nada sai da sua rede
+MISCALE_AI_ENABLED=true
+MISCALE_AI_BASE_URL=http://192.168.1.10:11434/v1
+MISCALE_AI_MODEL=llama3.2
+
+# Idioma da análise (o padrão é o MISCALE_LANG)
+MISCALE_AI_LANG=pt-BR
+```
+
+LM Studio, o servidor do llama.cpp, vLLM e afins funcionam do mesmo jeito, com a URL deles.
+A análise sai todo sábado às 9h para quem se pesou na semana. Para mudar, use
+`MISCALE_AI_WEEKDAY` (0 = segunda ... 6 = domingo) e `MISCALE_AI_HOUR`; se o servidor estiver
+desligado nessa hora, ela sai em até dois dias.
+
+**Custo.** Cada análise é uma requisição de alguns milhares de tokens. Com um modelo pequeno
+como o `gpt-5.4-mini`, um ano de análises semanais para duas pessoas custa cerca de um
+dólar. Um modelo local não custa nada.
+
+**Privacidade.** O provedor recebe as pesagens e a composição corporal da semana, as médias
+semanais das últimas 8 semanas e o primeiro nome, a idade, a altura e o sexo da pessoa. Nada
+além disso. Se preferir que tudo fique em casa, use o Ollama ou outro servidor local.
 
 ## Instalar no celular
 
