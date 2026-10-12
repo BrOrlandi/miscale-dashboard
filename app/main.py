@@ -116,6 +116,23 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
+# PWA files live at the root so the service worker controls the whole site.
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(STATIC / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(STATIC / "icons" / "favicon.png", media_type="image/png")
+
+
 @app.get("/api/ping")
 def ping():
     return {"ok": True}

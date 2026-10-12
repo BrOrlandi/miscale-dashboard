@@ -36,7 +36,8 @@ português: ela segue o idioma do navegador, e dá para trocar em Configuraçõe
   ano ou tudo.
 - **Avisos (opcionais)** de cada pesagem, por um webhook JSON genérico ou pelo seu próprio bot
   do Telegram.
-- Inglês e português; kg ou lb; tema claro, escuro ou automático. Funciona no celular.
+- Inglês e português; kg ou lb; tema claro, escuro ou automático.
+- **Instala no celular** como app (PWA).
 - Um container, SQLite e nenhum serviço externo. O Chart.js vem junto, então funciona offline.
 
 ## O que você precisa
@@ -93,6 +94,21 @@ estão no [README em inglês](README.md#install-without-docker). As variáveis m
 | `MISCALE_LANG` | Idioma dos avisos: `en` ou `pt-BR` |
 | `MISCALE_WEBHOOK_URL` | POST em JSON a cada pesagem |
 | `MISCALE_TELEGRAM_TOKEN` / `MISCALE_TELEGRAM_CHAT_ID` | Avisos pelo seu bot do Telegram |
+
+## Instalar no celular
+
+O painel é um PWA: instala como app, abre em tela cheia com ícone próprio e abre mesmo com o
+servidor fora do ar.
+
+- **Android / Chrome / Edge:** aparece o botão "Instalar app" no topo (ou menu do navegador ›
+  *Instalar app*).
+- **iPhone / iPad (Safari):** uma dica aparece uma vez: toque em Compartilhar e depois em
+  *Adicionar à Tela de Início*.
+
+Os navegadores só instalam (e só rodam o service worker) com **HTTPS**. Sirva o painel por um
+proxy reverso com certificado (Caddy, Traefik, nginx) ou pelo `tailscale serve`. Em
+`http://<ip>:8800` ele funciona normalmente no navegador, e o iPhone até adiciona à tela de
+início, mas o Android não oferece a instalação.
 
 ## Segurança
 

@@ -35,7 +35,8 @@ All data in the screenshots is made up (`scripts/seed_demo.py`).
   days, a year or all time.
 - **Notifications (optional)** for every weigh-in, through a generic JSON webhook or your
   own Telegram bot.
-- English and Portuguese (Brazil); kg or lb; light, dark or automatic theme. Works on a phone.
+- English and Portuguese (Brazil); kg or lb; light, dark or automatic theme.
+- **Installable on your phone** as an app (PWA), with offline shell.
 - One container, SQLite, no external services. Chart.js is bundled, so it works offline.
 
 ## What you need
@@ -128,6 +129,20 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 ```
+
+## Install it on your phone
+
+The dashboard is a Progressive Web App: it installs like an app, opens full screen with its
+own icon, and the shell loads even when the server is unreachable.
+
+- **Android / Chrome / Edge:** an "Install app" button appears in the header (or use the
+  browser menu › *Install app*).
+- **iPhone / iPad (Safari):** a hint shows up once: tap Share, then *Add to Home Screen*.
+
+Browsers only allow installing (and run the service worker) over **HTTPS**, so serve the
+dashboard through a reverse proxy with a certificate (Caddy, Traefik, nginx), or with
+`tailscale serve`. On plain `http://<ip>:8800` it works normally in the browser, and iOS can
+still add it to the home screen, but Android won't offer to install it.
 
 ## Configuration
 

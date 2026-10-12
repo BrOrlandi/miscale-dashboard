@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mi Scale Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+<meta name="description" content="Live weigh-ins, body composition and history from the Xiaomi Mi Body Composition Scale 2.">
+<meta name="theme-color" content="#f5f5f2">
+<link rel="icon" href="/static/icons/favicon.png" type="image/png">
+<link rel="manifest" href="/manifest.webmanifest">
+<!-- iOS: installs from Share > Add to Home Screen -->
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mi Scale">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
   // Apply the saved theme before the first paint, so the page doesn't flash.
   try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
@@ -142,7 +151,7 @@ td select { width: auto; padding: 2px 6px; font-size: 13px; }
 .scan.open .scan-core > * { opacity: 1; transform: none; transition-delay: calc(.25s + var(--i, 0) * 70ms); }
 
 /* Avatar with a progress ring: spins while reading, fills when stable, closes with the composition */
-.ring { position: relative; width: 124px; height: 124px; margin: 0 auto 14px; display: grid; place-items: center;
+.ring { position: relative; width: 124px; height: 124px; margin: 0 auto 14px; display: grid; place-items: center; place-content: center;
   transition: width .6s cubic-bezier(.2, .8, .2, 1), height .6s cubic-bezier(.2, .8, .2, 1), margin .6s; }
 .ring svg.arcs { position: absolute; inset: 0; width: 100%; height: 100%; animation: spin 1.3s linear infinite; }
 .ring circle { fill: none; stroke-width: 5; }
@@ -153,7 +162,9 @@ td select { width: auto; padding: 2px 6px; font-size: 13px; }
 .scan.stable .ring .arc { stroke-dashoffset: 34; }
 .scan.done .ring .arc { stroke-dashoffset: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.ring .avatar { --size: 96px; background: rgba(255,255,255,.18); transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
+/* The wrapper is a grid, not a line of text: an inline avatar would sit on the text baseline, off-center. */
+#scanAvatar { display: grid; place-items: center; width: 96px; height: 96px; line-height: 0; }
+.ring .avatar { --size: 96px; display: grid; background: rgba(255,255,255,.18); transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
 .ring .badge { position: absolute; right: 2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%;
   background: #fff; color: var(--scan-from); display: grid; place-items: center; transform: scale(0); }
 .ring .badge svg { width: 18px; height: 18px; }
@@ -234,6 +245,14 @@ tr.new td { animation: rowIn 2.4s ease; }
   .ring svg.arcs, .burst, .res, .metric.flash, .card.glow, tr.new td, .scan-weight.lock { animation: none !important; }
 }
 .more { text-align: center; margin-top: 8px; }
+/* Install: button (Chrome, Edge, Android) and a hint for iOS Safari */
+#installBtn[hidden], .ios-hint[hidden] { display: none; }
+.ios-hint { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 40;
+  display: flex; gap: 10px; align-items: center; background: var(--card); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px 12px 12px 16px; box-shadow: 0 8px 30px rgba(0,0,0,.18); font-size: 14px;
+  animation: rise .4s cubic-bezier(.2, .8, .2, 1); }
+.ios-hint p { margin: 0; flex: 1; }
+.ios-hint svg { width: 16px; height: 16px; vertical-align: -3px; }
 .icon-btn { padding: 6px 8px; display: inline-grid; place-items: center; }
 .icon-btn svg { width: 16px; height: 16px; }
 </style>
@@ -258,6 +277,7 @@ tr.new td { animation: rowIn 2.4s ease; }
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
         </button>
       </div>
+      <button id="installBtn" class="primary" hidden onclick="install()" data-t="install"></button>
       <button onclick="openSettings()" data-t-title="settings" class="icon-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
@@ -333,6 +353,11 @@ tr.new td { animation: rowIn 2.4s ease; }
   <button class="scan-close" onclick="closeScan()" data-t-aria="close">×</button>
 </div>
 
+<div class="ios-hint" id="iosHint" hidden>
+  <p id="iosHintText"></p>
+  <button class="link" onclick="dismissIosHint()" data-t-aria="close">×</button>
+</div>
+
 <dialog id="profileDlg">
   <form onsubmit="saveProfile(event)">
     <h2 id="pTitle"></h2>
@@ -377,7 +402,7 @@ tr.new td { animation: rowIn 2.4s ease; }
 // ---------- Translations ----------
 const STRINGS = {
   en: {
-    connecting: "connecting", live: "live", reconnecting: "reconnecting", btError: "Bluetooth error", scannerOff: "scanner off",
+    connecting: "connecting", live: "Connected", reconnecting: "reconnecting", btError: "Bluetooth error", scannerOff: "scanner off",
     theme: "Theme", themeAuto: "Automatic (follows the system)", themeLight: "Light", themeDark: "Dark",
     settings: "Settings", profile: "Profile", addPerson: "+ Person", newPerson: "New person",
     scale: "Scale", stepOn: "Step on the scale", measuring: "Measuring…", stableMeasuring: "Stable weight · measuring body composition…",
@@ -396,6 +421,7 @@ const STRINGS = {
     readingScale: "Reading the scale…", stable: "Stable", composition: "Composition",
     stableKeep: "Stable weight · measuring body composition, stay on…", notRecognized: "Person not recognized",
     closeHint: "Closes on its own in a moment · tap to keep it open", close: "Close",
+    install: "Install app", iosHint: "Install it on your iPhone: tap Share {icon} and then “Add to Home Screen”.",
     since: "{d} since {when}",
     resNotSaved: "Measurement not saved.", resUnknown: "Not recognized by weight: pick who it was in the history.",
     resNoHeight: "Set height and birth date in the Profile to see body composition.",
@@ -411,7 +437,7 @@ const STRINGS = {
     tolNote: "A weigh-in goes to the profile whose last weight is closest, within this tolerance. Otherwise it is saved as \"unknown\" and you can assign it in the history.",
   },
   "pt-BR": {
-    connecting: "conectando", live: "ao vivo", reconnecting: "reconectando", btError: "Bluetooth com erro", scannerOff: "scanner desligado",
+    connecting: "conectando", live: "Conectado", reconnecting: "reconectando", btError: "Bluetooth com erro", scannerOff: "scanner desligado",
     theme: "Tema", themeAuto: "Automático (segue o sistema)", themeLight: "Claro", themeDark: "Escuro",
     settings: "Configurações", profile: "Perfil", addPerson: "+ Pessoa", newPerson: "Nova pessoa",
     scale: "Balança", stepOn: "Suba na balança", measuring: "Medindo…", stableMeasuring: "Peso estável · medindo composição…",
@@ -430,6 +456,7 @@ const STRINGS = {
     readingScale: "Lendo a balança…", stable: "Estável", composition: "Composição",
     stableKeep: "Peso estável · medindo a composição, continue em cima…", notRecognized: "Pessoa não reconhecida",
     closeHint: "Fecha sozinha em instantes · toque para manter aberta", close: "Fechar",
+    install: "Instalar app", iosHint: "Instale no iPhone: toque em Compartilhar {icon} e depois em “Adicionar à Tela de Início”.",
     since: "{d} desde {when}",
     resNotSaved: "Medição não registrada.", resUnknown: "Pessoa não reconhecida pelo peso: escolha quem foi no histórico.",
     resNoHeight: "Informe altura e nascimento no Perfil para ver a composição corporal.",
@@ -520,10 +547,18 @@ function applyTheme(th) {
   else document.documentElement.dataset.theme = th;
   try { localStorage.setItem("theme", th); } catch {}
   [...$("theme").children].forEach((b) => b.classList.toggle("active", b.dataset.theme === th));
+  syncThemeColor();
   redrawChart();
 }
+
+// Browser and installed-app bar color: the page background, or the weigh-in green while it is open.
+function syncThemeColor() {
+  const css = getComputedStyle(document.documentElement);
+  const color = css.getPropertyValue(scanOpen() ? "--scan-from" : "--bg").trim();
+  document.querySelector('meta[name="theme-color"]').content = color;
+}
 $("theme").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyTheme(b.dataset.theme); });
-media.addEventListener("change", () => { if (getTheme() === "auto") redrawChart(); });
+media.addEventListener("change", () => { if (getTheme() === "auto") { syncThemeColor(); redrawChart(); } });
 function redrawChart() { if (chart) { chart.destroy(); chart = null; } if (profiles.length) renderChart(); }
 
 // ---------- Data ----------
@@ -879,6 +914,7 @@ function openScan() {
   scanM = null; resultsKey = null; simulated = null;
   origin($("live"));
   scan.classList.add("open");
+  syncThemeColor();
 }
 
 function closeScan() {
@@ -891,6 +927,7 @@ function closeScan() {
   scanDismissed = true;
   origin($("lastCard"));
   scan.classList.remove("open");
+  syncThemeColor();
   setTimeout(() => {
     if (simulated) {
       // Simulation: show the fake measurement on the dashboard until the next reload.
@@ -1048,7 +1085,37 @@ function connect() {
   };
 }
 
+// ---------- Installable app (PWA) ----------
+let installPrompt = null;
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; $("installBtn").hidden = false; });
+window.addEventListener("appinstalled", () => { installPrompt = null; $("installBtn").hidden = true; });
+async function install() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  $("installBtn").hidden = true;
+}
+
+// iOS Safari has no install prompt: show once how to add it to the home screen.
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function dismissIosHint() { $("iosHint").hidden = true; try { localStorage.setItem("iosHint", "1"); } catch {} }
+function showIosHint() {
+  let seen = false;
+  try { seen = !!localStorage.getItem("iosHint"); } catch {}
+  if (!iOS || standalone || seen) return;
+  const share = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>`;
+  $("iosHintText").innerHTML = esc(t("iosHint", { icon: "%ICON%" })).replace("%ICON%", share);
+  $("iosHint").hidden = false;
+}
+
+// Back to the app after a while (phone unlocked, app switched): fetch what changed.
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !scanOpen()) load(true); });
+
 applyStrings();
+showIosHint();
 $("liveState").textContent = t("stepOn");
 applyTheme(getTheme());
 load();

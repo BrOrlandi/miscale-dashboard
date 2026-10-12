@@ -1,0 +1,23 @@
+{
+  "name": "Mi Scale Dashboard",
+  "short_name": "Mi Scale",
+  "description": "Live weigh-ins, body composition and history from the Xiaomi Mi Body Composition Scale 2.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f5f2",
+  "theme_color": "#1f7a5a",
+  "categories": ["health", "fitness", "lifestyle"],
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/static/screenshots/wide.png", "sizes": "1280x860", "type": "image/png", "form_factor": "wide", "label": "Dashboard" },
+    { "src": "/static/screenshots/narrow.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow", "label": "Weigh-in result" }
+  ]
+}

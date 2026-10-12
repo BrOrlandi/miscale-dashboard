@@ -35,3 +35,15 @@ def test_websocket_status(tmp_path):
     c, _ = client(tmp_path)
     with c, c.websocket_connect("/ws") as ws:
         assert ws.receive_json() == {"type": "status", "scanner": False, "scanner_error": None, "last_seen": None}
+
+
+def test_pwa_files(tmp_path):
+    c, _ = client(tmp_path)
+    with c:
+        m = c.get("/manifest.webmanifest")
+        assert m.headers["content-type"].startswith("application/manifest+json")
+        assert {i["purpose"] for i in m.json()["icons"]} == {"any", "maskable"}
+        for icon in m.json()["icons"]:
+            assert c.get(icon["src"]).status_code == 200
+        assert c.get("/sw.js").headers["content-type"].startswith("text/javascript")
+        assert c.get("/favicon.ico").status_code == 200
