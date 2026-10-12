@@ -3,16 +3,11 @@ name: Pages
 # Publishes the live demo (scripts/build_demo.py: the dashboard running in the browser with
 # made-up data) to https://brorlandi.github.io/miscale-dashboard/.
 #
-# GitHub Pages is not enabled on this repository yet, so this workflow only runs by hand.
-# To turn it on:
-#   1. Settings > Pages > Build and deployment > Source: "GitHub Actions".
-#      (Pages on a private repository needs a paid plan: GitHub Pro, Team or Enterprise.)
-#   2. Actions > Pages > Run workflow.
-#   3. Optional: to publish on every push to main, add under `on:`
-#        push:
-#          branches: [main]
+# Runs on every push to main, or by hand from Actions > Pages > Run workflow.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

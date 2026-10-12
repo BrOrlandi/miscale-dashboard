@@ -23,8 +23,6 @@ português: ela segue o idioma do navegador, e dá para trocar em Configuraçõe
 
 ## Demonstração ao vivo
 
-> **Disponível quando o GitHub Pages for ativado neste repositório.**
-
 Experimente em **<https://brorlandi.github.io/miscale-dashboard/>**. É o mesmo painel rodando
 inteiro no navegador, com dados inventados de duas pessoas fictícias. Não precisa de balança,
 de Bluetooth nem de servidor. Toque em **▶ Iniciar demo** para ver uma pesagem do começo ao

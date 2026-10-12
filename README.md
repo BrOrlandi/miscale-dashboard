@@ -22,8 +22,6 @@ AI-generated, not a real person ([docs/demo](docs/demo/README.md)).
 
 ## Live demo
 
-> **Available once GitHub Pages is enabled for this repository.**
-
 Try it at **<https://brorlandi.github.io/miscale-dashboard/>**. It is the same dashboard
 running entirely in your browser, with made-up data for two fictional people. It needs no
 scale, no Bluetooth and no server. Press **▶ Play demo** to watch a weigh-in from start to
