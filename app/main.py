@@ -77,7 +77,11 @@ async def notify_when_ready(mid: int):
     if not m:
         return
     profile = db.profile(m["profile_id"]) if m["profile_id"] else None
-    history = [h for h in db.list(m["profile_id"], limit=50) if h["id"] != mid] if profile else []
+    if not profile:
+        # A weight that matches nobody (an object, a pet, a guest) stays in the history only.
+        log.info("measurement %s has no owner (%.2f kg): not notifying", mid, m["weight_kg"])
+        return
+    history = [h for h in db.list(m["profile_id"], limit=50) if h["id"] != mid]
     await notify.send(notify.message(m, profile, history, settings()["unit"]), m, profile)
 
 

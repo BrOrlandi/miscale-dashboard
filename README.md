@@ -183,7 +183,8 @@ raw packets received from it.
 ### Notifications
 
 When a weigh-in finishes, the server waits up to `MISCALE_NOTIFY_WAIT` seconds for the
-impedance, then sends a message like this:
+impedance, then sends a message like this. Weigh-ins that match no profile (an object on the
+scale, a pet) are not notified; they only show up in the history.
 
 ```
 ⚖️ Alex · 81.40 kg
