@@ -1,0 +1,31 @@
+{
+  "name": "miscale-dashboard-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The promo video of Mi Scale Dashboard, built with Remotion",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "music": "node scripts/make_music.mjs",
+    "studio": "npm run music && remotion studio",
+    "render": "npm run music && remotion render Promo out/miscale-dashboard.mp4 && remotion render PromoVertical out/miscale-dashboard-vertical.mp4",
+    "stills": "node scripts/stills.mjs",
+    "docs": "remotion ffmpeg -y -loglevel error -i out/miscale-dashboard.mp4 -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart ../docs/video/miscale-dashboard.mp4 && remotion ffmpeg -y -loglevel error -i out/miscale-dashboard.mp4 -ss 9.067 -vf scale=1280:-1 -frames:v 1 -q:v 3 ../docs/video/poster.jpg"
+  },
+  "dependencies": {
+    "@react-three/fiber": "9.8.1",
+    "@remotion/bundler": "4.0.535",
+    "@remotion/cli": "4.0.535",
+    "@remotion/google-fonts": "4.0.535",
+    "@remotion/renderer": "4.0.535",
+    "@remotion/three": "4.0.535",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.535",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/three": "0.186.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "fps": 30,
+  "bpm": 150,
+  "framesPerBeat": 12,
+  "durationInBeats": 102,
+  "scenes": [
+    { "id": "intro", "beat": 0, "beats": 8 },
+    { "id": "scale", "beat": 8, "beats": 16 },
+    { "id": "live", "beat": 24, "beats": 8 },
+    { "id": "chart", "beat": 32, "beats": 8 },
+    { "id": "dashboard", "beat": 40, "beats": 8 },
+    { "id": "ai", "beat": 48, "beats": 16 },
+    { "id": "phone", "beat": 64, "beats": 16 },
+    { "id": "free", "beat": 80, "beats": 8 },
+    { "id": "end", "beat": 88, "beats": 14 }
+  ],
+  "cues": {
+    "impact": [8, 24, 32, 40, 48, 64, 80, 84, 88, 92],
+    "thud": [10],
+    "lock": [17],
+    "ticks": [12, 17],
+    "ping": [66, 72],
+    "typing": [52, 62],
+    "whoosh": [23.5, 31.5, 39.5, 47.5, 63.5, 79.5, 87.5],
+    "riser": [[4, 8], [44, 48], [60, 64], [85, 88]]
+  }
+}
