@@ -30,6 +30,15 @@ fim; o passeio termina com a análise da semana do Alex sendo escrita no card. E
 simulado (frases fixas preenchidas com os números da demonstração), porque a demo não tem IA
 por trás. O que você mudar fica só na página e some quando ela é recarregada.
 
+## Vídeo de apresentação
+
+[![Vídeo de apresentação: uma pesagem, o painel, a análise semanal com IA e as notificações no celular](docs/video/poster.jpg)](docs/video/miscale-dashboard.mp4)
+
+Um vídeo de 40 segundos sobre o projeto, em inglês e com música:
+[docs/video/miscale-dashboard.mp4](docs/video/miscale-dashboard.mp4) (1920x1080). Ele é feito com
+código, como o resto do repositório: as cenas em 3D, as gravações da demonstração e a trilha
+sonora são geradas a partir de [video/](video/README.md).
+
 ## Recursos
 
 - **Tela de pesagem ao vivo.** Quando alguém sobe na balança, todo navegador aberto mostra o

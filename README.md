@@ -29,6 +29,14 @@ finish; the tour ends with Alex's weekly analysis being written in its card. Tha
 simulated (fixed sentences filled in with the demo's numbers), since the demo has no AI behind
 it. Changes you make stay in the page and are gone when you reload it.
 
+## Promo video
+
+[![Promo video: a weigh-in, the dashboard, the AI weekly analysis and phone notifications](docs/video/poster.jpg)](docs/video/miscale-dashboard.mp4)
+
+A 40-second promo of the project: [docs/video/miscale-dashboard.mp4](docs/video/miscale-dashboard.mp4)
+(1920x1080, with music). It is built with code, like the rest of the repository: the 3D scenes,
+the recordings of the live demo and the soundtrack are all generated from [video/](video/README.md).
+
 ## Features
 
 - **Live weigh-in screen.** When someone steps on the scale, every open browser shows the
