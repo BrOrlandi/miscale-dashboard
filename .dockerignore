@@ -1,0 +1,9 @@
+.git
+.github
+data
+docs
+tests
+scripts
+**/__pycache__
+.venv
+*.db

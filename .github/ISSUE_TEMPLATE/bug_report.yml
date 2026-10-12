@@ -1,0 +1,36 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: scale
+    attributes:
+      label: Scale model
+      placeholder: Mi Body Composition Scale 2 (XMTZC05HM)
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host, OS and Bluetooth adapter
+      placeholder: Raspberry Pi 4, Raspberry Pi OS 12, built-in Bluetooth
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options: [Docker Compose, Python / systemd, Other]
+  - type: textarea
+    id: packets
+    attributes:
+      label: Packets and logs
+      description: Output of /api/debug/packets right after a weigh-in, and container logs if relevant.
+      render: json

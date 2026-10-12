@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi Scale Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+<script>
+  // Apply the saved theme before the first paint, so the page doesn't flash.
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f5f2; --card: #ffffff; --ink: #1c1d1f; --muted: #6b6f76; --line: #e3e3de;
+  --accent: #1f7a5a; --accent-soft: #e2f1ea; --warn: #b4690e; --danger: #c62828; --good: #1e8e3e;
+  --scan-from: #0f5c43; --scan-to: #1f8a63; --scan-wave: rgba(255, 255, 255, .55);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121315; --card: #1b1d20; --ink: #ececea; --muted: #9a9ea6; --line: #2b2e33;
+    --accent: #4cc292; --accent-soft: #173327; --warn: #e3a248; --danger: #ff6b6b; --good: #4ade80;
+    --scan-from: #06231a; --scan-to: #0f4532; --scan-wave: rgba(76, 194, 146, .6);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121315; --card: #1b1d20; --ink: #ececea; --muted: #9a9ea6; --line: #2b2e33;
+  --accent: #4cc292; --accent-soft: #173327; --warn: #e3a248; --danger: #ff6b6b; --good: #4ade80;
+  --scan-from: #06231a; --scan-to: #0f4532; --scan-wave: rgba(76, 194, 146, .6);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted);
+  border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--accent); }
+.dot.err { background: var(--danger); }
+#live { text-align: center; padding: 28px 18px; }
+#liveWeight { font-size: 76px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+#liveWeight small { font-size: 26px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+#liveWeight.measuring { color: var(--muted); }
+#liveWeight.stable { color: var(--accent); }
+#liveState { margin-top: 10px; color: var(--muted); min-height: 22px; }
+#liveDelta { margin-top: 4px; font-size: 14px; color: var(--muted); min-height: 20px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.metric { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.metric b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.metric span { font-size: 12px; color: var(--muted); }
+.metric .val { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.trend { font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.trend.good { color: var(--good); }
+.trend.bad { color: var(--danger); }
+.trend.flat, .trend.neutral { color: var(--muted); font-weight: 500; }
+.cmp { display: flex; gap: 4px; }
+.cmp button { padding: 2px 8px; font-size: 12px; border-radius: 999px; }
+.cmp button.active { background: var(--accent-soft); border-color: var(--accent); }
+.note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.chart-wrap { position: relative; height: 280px; }
+section { margin-top: 16px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr.outra td { color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.link { border: 0; background: none; color: var(--muted); padding: 2px 4px; font-size: 13px; }
+button.link:hover { color: var(--ink); }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); padding: 20px; width: min(400px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+input, select { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.range { display: flex; gap: 4px; }
+.range button.active { background: var(--accent-soft); border-color: var(--accent); }
+.head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.head h2 { margin: 0; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { border-radius: 999px; padding: 3px 12px 3px 3px; display: inline-flex; align-items: center; gap: 7px; }
+.tabs button.active { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+td select { width: auto; padding: 2px 6px; font-size: 13px; }
+.danger { color: var(--danger); }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Avatar: photo or initials */
+.avatar { --size: 28px; width: var(--size); height: var(--size); border-radius: 50%; flex: none;
+  display: inline-grid; place-items: center; overflow: hidden; background: var(--accent); color: #fff;
+  font-weight: 600; font-size: calc(var(--size) * .4); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Photo in the profile dialog */
+.photo-edit { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+.photo-edit .avatar { --size: 76px; }
+.photo-edit .actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+
+/* Theme switch: auto, light, dark */
+.theme { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--card); }
+.theme button { border: 0; background: none; border-radius: 999px; padding: 4px 7px; color: var(--muted); display: grid; place-items: center; }
+.theme button.active { background: var(--accent-soft); color: var(--accent); }
+.theme svg { width: 16px; height: 16px; }
+
+/* Weigh-in screen: opens as a circle growing out of the scale card and closes by
+   shrinking into the latest-measurement card (--ox/--oy). */
+.scan { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center;
+  justify-content: safe center; overflow: hidden auto; color: #fff; padding: 64px 16px 48px;
+  background: radial-gradient(circle at center, var(--scan-to), var(--scan-from) 70%);
+  clip-path: circle(0 at var(--ox, 50%) var(--oy, 50%)); visibility: hidden; pointer-events: none;
+  transition: clip-path .65s cubic-bezier(.65, 0, .35, 1), visibility 0s linear .65s; }
+.scan.open { clip-path: circle(150vmax at var(--ox, 50%) var(--oy, 50%)); visibility: visible; pointer-events: auto;
+  transition: clip-path .75s cubic-bezier(.65, 0, .35, 1), visibility 0s; }
+.waves { position: fixed; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.waves span { position: absolute; left: 0; top: 0; width: 240px; height: 240px; margin: -120px 0 0 -120px;
+  border-radius: 50%; border: 2px solid var(--scan-wave); opacity: 0;
+  animation: wave 3.2s cubic-bezier(.2, .6, .35, 1) infinite; }
+.waves span:nth-child(2) { animation-delay: .8s; }
+.waves span:nth-child(3) { animation-delay: 1.6s; }
+.waves span:nth-child(4) { animation-delay: 2.4s; }
+@keyframes wave { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(5.5); opacity: 0; } }
+.scan.stable .waves span { animation-duration: 4.8s; }
+.scan.done .waves span { animation: none; opacity: 0; transition: opacity .6s; }
+/* One-off pulse when the body composition arrives */
+.burst { position: fixed; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px 0 0 -120px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.35), transparent 65%); opacity: 0; pointer-events: none; }
+.scan.done .burst { animation: burst 1.1s ease-out; }
+@keyframes burst { 0% { transform: scale(.3); opacity: 1; } 100% { transform: scale(6); opacity: 0; } }
+
+.scan-core { position: relative; text-align: center; width: min(760px, 100%); }
+/* Staggered entrance */
+.scan-core > * { opacity: 0; transform: translateY(18px); transition: opacity .45s ease, transform .55s cubic-bezier(.2, .8, .2, 1); }
+.scan.open .scan-core > * { opacity: 1; transform: none; transition-delay: calc(.25s + var(--i, 0) * 70ms); }
+
+/* Avatar with a progress ring: spins while reading, fills when stable, closes with the composition */
+.ring { position: relative; width: 124px; height: 124px; margin: 0 auto 14px; display: grid; place-items: center;
+  transition: width .6s cubic-bezier(.2, .8, .2, 1), height .6s cubic-bezier(.2, .8, .2, 1), margin .6s; }
+.ring svg.arcs { position: absolute; inset: 0; width: 100%; height: 100%; animation: spin 1.3s linear infinite; }
+.ring circle { fill: none; stroke-width: 5; }
+.ring .track { stroke: rgba(255,255,255,.16); }
+.ring .arc { stroke: #fff; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 72;
+  transition: stroke-dashoffset .9s cubic-bezier(.2, .8, .2, 1); }
+.scan.stable .ring svg.arcs { animation: none; transform: rotate(-90deg); }
+.scan.stable .ring .arc { stroke-dashoffset: 34; }
+.scan.done .ring .arc { stroke-dashoffset: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ring .avatar { --size: 96px; background: rgba(255,255,255,.18); transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
+.ring .badge { position: absolute; right: 2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%;
+  background: #fff; color: var(--scan-from); display: grid; place-items: center; transform: scale(0); }
+.ring .badge svg { width: 18px; height: 18px; }
+.ring .badge path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+.scan.done .ring .badge { animation: pop .5s cubic-bezier(.3, 1.6, .5, 1) .35s forwards; }
+.scan.done .ring .badge path { transition: stroke-dashoffset .45s ease .7s; stroke-dashoffset: 0; }
+@keyframes pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+.scan-name { font-size: 20px; font-weight: 600; margin-bottom: 4px; min-height: 28px; }
+.scan-name.swap { animation: fadeIn .5s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.scan-weight { font-size: clamp(72px, 18vw, 150px); font-weight: 700; letter-spacing: -.04em; line-height: 1;
+  font-variant-numeric: tabular-nums; transition: font-size .6s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
+.scan-weight small { font-size: .3em; font-weight: 500; opacity: .75; margin-left: 6px; letter-spacing: 0; }
+.scan:not(.stable) .scan-weight { opacity: .75; }
+.scan-weight.lock { animation: lock .6s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes lock { 0% { transform: scale(1); text-shadow: none; } 40% { transform: scale(1.07); text-shadow: 0 0 40px rgba(255,255,255,.7); } 100% { transform: scale(1); text-shadow: none; } }
+.scan-state { margin-top: 12px; font-size: 17px; opacity: .9; min-height: 26px; }
+.scan-state.swap { animation: fadeIn .4s ease; }
+.scan-delta { margin-top: 4px; font-size: 15px; opacity: .75; min-height: 22px; }
+
+/* Steps joined by a line that fills up */
+.steps { position: relative; display: flex; justify-content: center; gap: 0; margin: 22px auto 0; font-size: 13px; width: min(360px, 100%);
+  transition: opacity .4s, max-height .5s, margin .5s; max-height: 60px; }
+.steps span { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: .55; transition: opacity .3s; }
+.steps span::before { content: ""; position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; background: var(--scan-from); transition: background .3s; }
+.steps span:not(:last-child)::after { content: ""; position: absolute; top: 7px; left: 50%; width: 100%; height: 2px;
+  background: linear-gradient(#fff, #fff) left / 0 100% no-repeat, rgba(255,255,255,.25); transition: background-size .7s ease; }
+.steps span.on { opacity: 1; }
+.steps span.on::before { background: #fff; animation: pop .4s cubic-bezier(.3, 1.6, .5, 1); }
+.steps span.on:has(+ span.on)::after { background-size: 100% 100%; }
+
+/* Bioimpedance result */
+.scan.results .ring { width: 92px; height: 92px; margin-bottom: 8px; }
+.scan.results .ring .avatar { transform: scale(.72); }
+.scan.results .scan-weight { font-size: clamp(56px, 12vw, 96px); }
+.scan.results .steps { opacity: 0; max-height: 0; margin-top: 0; overflow: hidden; }
+.scan-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 20px; text-align: left; }
+.scan-results:empty { display: none; }
+.res { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 12px;
+  animation: rise .55s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(.15s + var(--i) * 75ms); }
+.res b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.res span { font-size: 12px; opacity: .8; }
+.res .top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.res .trend { color: rgba(255,255,255,.75); }
+.res .trend.good { color: #b8f5c9; }
+.res .trend.bad { color: #ffc0b3; }
+.scan-note { grid-column: 1 / -1; font-size: 14px; opacity: .85; text-align: center; animation: rise .5s both .2s; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/* Auto-close countdown */
+.scan-timer { position: fixed; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.7);
+  transform-origin: left; transform: scaleX(0); }
+.scan-timer.run { animation: shrink var(--dur, 10s) linear forwards; }
+@keyframes shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.scan-hint { position: fixed; left: 0; right: 0; bottom: 12px; text-align: center; font-size: 12px; opacity: 0; transition: opacity .4s; }
+.scan-hint.on { opacity: .7; }
+.scan-close { position: fixed; top: 16px; right: 16px; background: rgba(255,255,255,.14); border: 0; color: #fff;
+  width: 40px; height: 40px; border-radius: 50%; font-size: 22px; line-height: 1; padding: 0; transition: transform .3s, background .2s; }
+.scan-close:hover { background: rgba(255,255,255,.24); transform: rotate(90deg); }
+
+/* Dashboard updating after a weigh-in */
+.metric.flash { animation: flash 1.6s ease both; animation-delay: calc(var(--i) * 60ms); }
+@keyframes flash { 0% { background: var(--accent-soft); transform: scale(.96); box-shadow: 0 0 0 2px var(--accent); }
+  30% { transform: scale(1.02); } 100% { background: var(--bg); transform: none; box-shadow: 0 0 0 0 transparent; } }
+.card.glow { animation: glow 1.8s ease; }
+@keyframes glow { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+tr.new td { animation: rowIn 2.4s ease; }
+@keyframes rowIn { 0% { background: var(--accent-soft); opacity: 0; transform: translateY(-8px); }
+  15% { opacity: 1; transform: none; } 60% { background: var(--accent-soft); } 100% { background: transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scan { clip-path: none; opacity: 0; transition: opacity .2s, visibility 0s linear .2s; }
+  .scan.open { clip-path: none; opacity: 1; transition: opacity .2s; }
+  .scan-core > *, .scan.open .scan-core > * { transition: none; transform: none; }
+  .waves span { animation: none; opacity: .25; }
+  .waves span:nth-child(2) { transform: scale(2); } .waves span:nth-child(3) { transform: scale(3); }
+  .ring svg.arcs, .burst, .res, .metric.flash, .card.glow, tr.new td, .scan-weight.lock { animation: none !important; }
+}
+.more { text-align: center; margin-top: 8px; }
+.icon-btn { padding: 6px 8px; display: inline-grid; place-items: center; }
+.icon-btn svg { width: 16px; height: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="toolbar" style="gap:14px">
+      <h1>Mi Scale</h1>
+      <div class="tabs" id="tabs"></div>
+    </div>
+    <div class="toolbar">
+      <span class="pill"><span class="dot" id="connDot"></span><span id="connText" data-t="connecting"></span></span>
+      <div class="theme" id="theme" role="group" data-t-aria="theme">
+        <button data-theme="auto" data-t-title="themeAuto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        </button>
+        <button data-theme="light" data-t-title="themeLight">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <button data-theme="dark" data-t-title="themeDark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+      <button onclick="openSettings()" data-t-title="settings" class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button onclick="openProfile(current)" data-t="profile"></button>
+      <button onclick="openProfile(null)" data-t="addPerson"></button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="card" id="live">
+      <h2 data-t="scale"></h2>
+      <div id="liveWeight" class="measuring"><span id="liveNum">--</span><small class="unit"></small></div>
+      <div id="liveState"></div>
+      <div id="liveDelta"></div>
+    </div>
+    <div class="card" id="lastCard">
+      <div class="head">
+        <h2 id="lastTitle"></h2>
+        <div class="cmp" id="cmp" data-t-title="compareWith">
+          <button data-days="0" class="active" data-t="previous"></button><button data-days="7" data-t="d7"></button><button data-days="30" data-t="d30"></button>
+        </div>
+      </div>
+      <div class="metrics" id="lastMetrics"></div>
+      <div class="note" id="lastNote"></div>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="head">
+      <h2 data-t="weight"></h2>
+      <div class="range" id="range">
+        <button data-days="30" class="active" data-t="d30"></button>
+        <button data-days="90" data-t="d90"></button>
+        <button data-days="365" data-t="y1"></button>
+        <button data-days="0" data-t="all"></button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  </section>
+
+  <section class="card">
+    <div class="head"><h2 data-t="history"></h2>
+      <label style="margin:0; display:flex; gap:6px; align-items:center"><input type="checkbox" id="showAll" style="width:auto"> <span data-t="everyone"></span></label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th data-t="date"></th><th data-t="weight"></th><th data-t="bodyFat"></th><th data-t="muscle"></th><th data-t="water"></th><th data-t="visceral"></th><th data-t="who"></th><th></th></tr></thead>
+        <tbody id="history"></tbody>
+      </table>
+    </div>
+    <div class="more"><button class="link" id="more" onclick="historyRows += 30; renderHistory()" data-t="showMore"></button></div>
+  </section>
+</main>
+
+<div class="scan" id="scan" role="dialog" aria-modal="true" data-t-aria="readingScale">
+  <div class="waves"><span></span><span></span><span></span><span></span></div>
+  <div class="burst"></div>
+  <div class="scan-core">
+    <div class="ring" style="--i:0">
+      <svg class="arcs" viewBox="0 0 124 124"><circle class="track" cx="62" cy="62" r="58"/><circle class="arc" cx="62" cy="62" r="58" pathLength="100"/></svg>
+      <div id="scanAvatar"></div>
+      <span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    </div>
+    <div class="scan-name" id="scanName" style="--i:1"></div>
+    <div class="scan-weight" id="scanWeight" style="--i:2"><span id="scanNum">--</span><small class="unit"></small></div>
+    <div class="scan-delta" id="scanDelta" style="--i:3"></div>
+    <div class="scan-state" id="scanState" style="--i:4"></div>
+    <div class="steps" style="--i:5"><span id="stWeight" data-t="weight"></span><span id="stStable" data-t="stable"></span><span id="stImp" data-t="composition"></span></div>
+    <div class="scan-results" id="scanResults" style="--i:6"></div>
+  </div>
+  <div class="scan-timer" id="scanTimer"></div>
+  <div class="scan-hint" id="scanHint" data-t="closeHint"></div>
+  <button class="scan-close" onclick="closeScan()" data-t-aria="close">×</button>
+</div>
+
+<dialog id="profileDlg">
+  <form onsubmit="saveProfile(event)">
+    <h2 id="pTitle"></h2>
+    <div class="photo-edit">
+      <div id="pAvatar"></div>
+      <div class="actions">
+        <button type="button" onclick="$('pFile').click()" data-t="choosePhoto"></button>
+        <button type="button" class="link danger" id="pPhotoRemove" onclick="removePhoto()" data-t="removePhoto"></button>
+        <input type="file" id="pFile" accept="image/*" hidden>
+      </div>
+    </div>
+    <label data-t="name"></label><input id="pName" required maxlength="60">
+    <label data-t="heightCm"></label><input id="pHeight" type="number" step="0.5" min="100" max="230">
+    <label data-t="birth"></label><input id="pBirth" type="date">
+    <label data-t="sex"></label>
+    <select id="pMale"><option value="1" data-t="male"></option><option value="0" data-t="female"></option></select>
+    <label id="pRefLabel"></label><input id="pRef" type="number" step="0.1" min="2" max="600">
+    <p class="note" data-t="sexNote"></p>
+    <div class="row">
+      <button type="button" class="link danger" id="pDelete" onclick="deleteProfile()" style="margin-right:auto" data-t="deleteProfile"></button>
+      <button type="button" onclick="profileDlg.close()" data-t="cancel"></button><button class="primary" data-t="save"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settingsDlg">
+  <form onsubmit="saveSettings(event)">
+    <h2 data-t="settings"></h2>
+    <label data-t="language"></label>
+    <select id="sLang"><option value="auto" data-t="langAuto"></option><option value="en">English</option><option value="pt-BR">Português (Brasil)</option></select>
+    <label data-t="unitLabel"></label>
+    <select id="sUnit"><option value="kg">kg</option><option value="lb">lb</option></select>
+    <label id="sTolLabel"></label><input id="sTol" type="number" step="0.5" min="0.5" max="50">
+    <p class="note" data-t="tolNote"></p>
+    <div class="row">
+      <button type="button" onclick="settingsDlg.close()" data-t="cancel"></button><button class="primary" data-t="save"></button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// ---------- Translations ----------
+const STRINGS = {
+  en: {
+    connecting: "connecting", live: "live", reconnecting: "reconnecting", btError: "Bluetooth error", scannerOff: "scanner off",
+    theme: "Theme", themeAuto: "Automatic (follows the system)", themeLight: "Light", themeDark: "Dark",
+    settings: "Settings", profile: "Profile", addPerson: "+ Person", newPerson: "New person",
+    scale: "Scale", stepOn: "Step on the scale", measuring: "Measuring…", stableMeasuring: "Stable weight · measuring body composition…",
+    ready: "Done · impedance {imp} Ω", done: "Measurement complete", unknownPerson: "Not recognized by weight",
+    lastMeasurement: "Latest measurement", compareWith: "Compare with", previous: "previous",
+    d7: "7 d", d30: "30 d", d90: "90 d", y1: "1 year", all: "All",
+    noMeasurements: "No measurements yet.", arrowsSince: "Arrows compared with {when}. Green is good, red is bad.",
+    noRef: "No weigh-in {days} days old or more to compare with yet.",
+    needHeight: "Set height and birth date in the Profile to calculate body composition.",
+    noImpedance: "No impedance in this measurement (step on barefoot and wait until it finishes).",
+    showMore: "Show more", weight: "Weight", avg7: "7-day average", bodyFat: "Body fat", history: "History", everyone: "everyone",
+    date: "Date", muscle: "Muscle", water: "Water", visceral: "Visceral", who: "Who", unknown: "unknown",
+    deleteMeasurement: "Delete this measurement?", delete: "Delete",
+    bmi: "BMI", fatMass: "Fat mass", protein: "Protein", bone: "Bone mass", visceralFat: "Visceral fat",
+    bmr: "Basal metabolism", impedance: "Impedance",
+    readingScale: "Reading the scale…", stable: "Stable", composition: "Composition",
+    stableKeep: "Stable weight · measuring body composition, stay on…", notRecognized: "Person not recognized",
+    closeHint: "Closes on its own in a moment · tap to keep it open", close: "Close",
+    since: "{d} since {when}",
+    resNotSaved: "Measurement not saved.", resUnknown: "Not recognized by weight: pick who it was in the history.",
+    resNoHeight: "Set height and birth date in the Profile to see body composition.",
+    resNoImp: "No impedance: step on barefoot and wait until it finishes to see body fat and muscle.",
+    choosePhoto: "Choose photo…", removePhoto: "Remove photo", name: "Name", heightCm: "Height (cm)", birth: "Birth date",
+    sex: "Sex", male: "Male", female: "Female", refWeight: "Approximate weight ({unit}), to recognize the first weigh-in",
+    sexNote: "Height, age and sex feed the body composition formulas.",
+    deleteProfile: "Delete profile", cancel: "Cancel", save: "Save",
+    confirmDeleteProfile: "Delete {name}'s profile? Their measurements become \"unknown\".",
+    photoFailed: "The photo was not uploaded: ", photoOpenFailed: "Could not open this image", photoConvertFailed: "Could not convert the photo",
+    language: "Language", langAuto: "Automatic (browser)", unitLabel: "Weight unit",
+    tolerance: "Tolerance to recognize a person by weight ({unit})",
+    tolNote: "A weigh-in goes to the profile whose last weight is closest, within this tolerance. Otherwise it is saved as \"unknown\" and you can assign it in the history.",
+  },
+  "pt-BR": {
+    connecting: "conectando", live: "ao vivo", reconnecting: "reconectando", btError: "Bluetooth com erro", scannerOff: "scanner desligado",
+    theme: "Tema", themeAuto: "Automático (segue o sistema)", themeLight: "Claro", themeDark: "Escuro",
+    settings: "Configurações", profile: "Perfil", addPerson: "+ Pessoa", newPerson: "Nova pessoa",
+    scale: "Balança", stepOn: "Suba na balança", measuring: "Medindo…", stableMeasuring: "Peso estável · medindo composição…",
+    ready: "Pronto · impedância {imp} Ω", done: "Medição concluída", unknownPerson: "Pessoa não reconhecida pelo peso",
+    lastMeasurement: "Última medição", compareWith: "Comparar com", previous: "anterior",
+    d7: "7 d", d30: "30 d", d90: "90 d", y1: "1 ano", all: "Tudo",
+    noMeasurements: "Nenhuma medição ainda.", arrowsSince: "Setas comparadas com {when}. Verde é bom, vermelho é ruim.",
+    noRef: "Ainda não há pesagem com {days} dias ou mais para comparar.",
+    needHeight: "Informe altura e nascimento no Perfil para calcular a composição corporal.",
+    noImpedance: "Sem impedância nesta medição (suba descalço e espere o fim da medição).",
+    showMore: "Mostrar mais", weight: "Peso", avg7: "Média 7 dias", bodyFat: "Gordura", history: "Histórico", everyone: "todas as pessoas",
+    date: "Data", muscle: "Músculo", water: "Água", visceral: "Visceral", who: "Quem", unknown: "desconhecido",
+    deleteMeasurement: "Apagar esta medição?", delete: "Apagar",
+    bmi: "IMC", fatMass: "Massa gorda", protein: "Proteína", bone: "Ossos", visceralFat: "Gordura visceral",
+    bmr: "Metabolismo basal", impedance: "Impedância",
+    readingScale: "Lendo a balança…", stable: "Estável", composition: "Composição",
+    stableKeep: "Peso estável · medindo a composição, continue em cima…", notRecognized: "Pessoa não reconhecida",
+    closeHint: "Fecha sozinha em instantes · toque para manter aberta", close: "Fechar",
+    since: "{d} desde {when}",
+    resNotSaved: "Medição não registrada.", resUnknown: "Pessoa não reconhecida pelo peso: escolha quem foi no histórico.",
+    resNoHeight: "Informe altura e nascimento no Perfil para ver a composição corporal.",
+    resNoImp: "Sem impedância: suba descalço e espere o fim da medição para ver gordura e músculo.",
+    choosePhoto: "Escolher foto…", removePhoto: "Remover foto", name: "Nome", heightCm: "Altura (cm)", birth: "Nascimento",
+    sex: "Sexo", male: "Masculino", female: "Feminino", refWeight: "Peso aproximado ({unit}), para reconhecer a primeira pesagem",
+    sexNote: "Altura, idade e sexo entram nas fórmulas da composição corporal.",
+    deleteProfile: "Apagar perfil", cancel: "Cancelar", save: "Salvar",
+    confirmDeleteProfile: "Apagar o perfil de {name}? As medições ficam como \"desconhecido\".",
+    photoFailed: "A foto não subiu: ", photoOpenFailed: "Não consegui abrir essa imagem", photoConvertFailed: "Falha ao converter a foto",
+    language: "Idioma", langAuto: "Automático (navegador)", unitLabel: "Unidade de peso",
+    tolerance: "Tolerância para reconhecer a pessoa pelo peso ({unit})",
+    tolNote: "A pesagem vai para o perfil com o último peso mais perto, dentro dessa tolerância. Senão fica como \"desconhecido\" e dá para escolher a pessoa no histórico.",
+  },
+};
+
+function storedLang() { try { return localStorage.getItem("lang") || "auto"; } catch { return "auto"; } }
+function resolveLang(pref) {
+  if (pref !== "auto" && STRINGS[pref]) return pref;
+  return (navigator.languages || [navigator.language]).some((l) => /^pt/i.test(l)) ? "pt-BR" : "en";
+}
+let lang = resolveLang(storedLang());
+const t = (key, vars = {}) => (STRINGS[lang][key] ?? STRINGS.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+function applyStrings() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
+  document.querySelectorAll("[data-t-title]").forEach((el) => { el.title = t(el.dataset.tTitle); el.setAttribute("aria-label", el.title); });
+  document.querySelectorAll("[data-t-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.tAria)));
+  document.querySelectorAll(".unit").forEach((el) => { el.textContent = unit(); });
+}
+
+// ---------- Helpers ----------
+const $ = (id) => document.getElementById(id);
+const profileDlg = $("profileDlg"), settingsDlg = $("settingsDlg");
+let all = [], profiles = [], settings = { unit: "kg", tolerance_kg: 5 }, chart, days = 30, resetTimer, editing = null;
+let pendingPhoto = null;   // photo picked in the dialog, uploaded on save
+let current = null;
+try { current = +localStorage.getItem("profile") || null; } catch {}
+
+const LB = 0.45359237;
+const unit = () => settings.unit === "lb" ? "lb" : "kg";
+const mass = (kg) => kg == null ? null : (unit() === "lb" ? kg / LB : kg);   // display value for a weight in kg
+const locale = () => lang === "pt-BR" ? "pt-BR" : "en-US";
+const fmt = (v, d = 1) => v == null ? "–" : Number(v).toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtDate = (s) => new Date(s).toLocaleString(locale(), { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+const num = (v, dec) => dec === 0 ? Math.round(v).toLocaleString(locale()) : fmt(v, dec);
+const mine = () => all.filter((m) => m.profile_id === current);
+const profileOf = (id) => profiles.find((p) => p.id === id);
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Animates an element's number from its current value (or `from`) to `to`.
+function tween(el, to, dec, suffix = "", ms = 700, from) {
+  const start = from ?? el._val;
+  el._val = to;
+  const id = (el._tid = (el._tid || 0) + 1);
+  const show = (v) => { el.textContent = num(v, dec) + suffix; };
+  if (reduceMotion.matches || start == null || start === to) return show(to);
+  const t0 = performance.now();
+  requestAnimationFrame(function frame(now) {
+    if (el._tid !== id) return;
+    const k = Math.min(1, (now - t0) / ms);
+    show(start + (to - start) * (1 - (1 - k) ** 3));
+    if (k < 1) requestAnimationFrame(frame);
+  });
+}
+
+// Restarts a CSS animation that already ran.
+function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+function initials(name) {
+  return (name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
+function avatar(p, src) {
+  const url = src || (p?.photo ? `/api/profiles/${p.id}/photo?${p.photo.split("?")[1] || ""}` : null);
+  return `<span class="avatar">${url ? `<img src="${url}" alt="">` : esc(initials(p?.name))}</span>`;
+}
+
+function signed(d, dec, suffix) { return `${d >= 0 ? "+" : "−"}${fmt(Math.abs(d), dec)}${suffix}`; }
+
+// ---------- Theme ----------
+const media = matchMedia("(prefers-color-scheme: dark)");
+function getTheme() { try { return localStorage.getItem("theme") || "auto"; } catch { return "auto"; } }
+function applyTheme(th) {
+  if (th === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = th;
+  try { localStorage.setItem("theme", th); } catch {}
+  [...$("theme").children].forEach((b) => b.classList.toggle("active", b.dataset.theme === th));
+  redrawChart();
+}
+$("theme").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyTheme(b.dataset.theme); });
+media.addEventListener("change", () => { if (getTheme() === "auto") redrawChart(); });
+function redrawChart() { if (chart) { chart.destroy(); chart = null; } if (profiles.length) renderChart(); }
+
+// ---------- Data ----------
+let deferred = false;   // new data arrived while the weigh-in screen was open
+async function load(animate = false) {
+  [all, profiles, settings] = await Promise.all([
+    fetch("/api/measurements").then((r) => r.json()),
+    fetch("/api/profiles").then((r) => r.json()),
+    fetch("/api/settings").then((r) => r.json()),
+  ]);
+  if (!profileOf(current)) current = profiles[0]?.id ?? null;
+  // While the weigh-in is on screen, the dashboard only changes (animated) once it closes.
+  if (scanOpen()) { deferred = true; return; }
+  render(animate);
+}
+
+function select(id) {
+  current = id;
+  try { localStorage.setItem("profile", id); } catch {}
+  render();
+}
+
+function render(animate = false) {
+  applyStrings();
+  $("tabs").innerHTML = profiles.map((p) =>
+    `<button class="${p.id === current ? "active" : ""}" onclick="select(${p.id})">${avatar(p)}${esc(p.name)}</button>`).join("");
+  renderLast(animate);
+  renderChart(animate);
+  renderHistory(animate);
+}
+
+// Card metrics: label key, value, decimals, suffix, and whether going up is good (+1), bad (-1) or neutral (0).
+const METRICS = [
+  ["weight", (m) => mass(m.weight_kg), 2, () => " " + unit(), -1],
+  ["bmi", (m) => m.metrics?.bmi, 1, () => "", -1],
+  ["bodyFat", (m) => m.metrics?.body_fat, 1, () => " %", -1],
+  ["fatMass", (m) => mass(m.metrics?.fat_mass), 1, () => " " + unit(), -1],
+  ["muscle", (m) => mass(m.metrics?.muscle_mass), 1, () => " " + unit(), 1],
+  ["water", (m) => m.metrics?.water, 1, () => " %", 1],
+  ["protein", (m) => m.metrics?.protein, 1, () => " %", 1],
+  ["bone", (m) => mass(m.metrics?.bone_mass), 1, () => " " + unit(), 1],
+  ["visceralFat", (m) => m.metrics?.visceral_fat, 1, () => "", -1],
+  ["bmr", (m) => m.metrics?.bmr, 0, () => " kcal", 1],
+  ["impedance", (m) => m.impedance || null, 0, () => " Ω", 0],
+];
+let cmpDays = 0;
+try { cmpDays = +localStorage.getItem("cmpDays") || 0; } catch {}
+
+// Reference measurement: the previous one (more than 3 min apart) or the newest at least N days old.
+function reference(m) {
+  const time = new Date(m.measured_at).getTime();
+  const gap = cmpDays ? cmpDays * 864e5 : 180000;
+  return all.find((h) => h.profile_id === m.profile_id && h.id !== m.id && time - new Date(h.measured_at).getTime() >= gap);
+}
+
+function trend(cur, prev, dec, dir) {
+  if (cur == null || prev == null) return "";
+  const d = cur - prev;
+  const eps = 0.5 * 10 ** -dec;
+  if (Math.abs(d) < Math.max(eps, 1e-9)) return `<span class="trend flat">=</span>`;
+  const up = d > 0;
+  const cls = dir === 0 ? "neutral" : (up === (dir > 0) ? "good" : "bad");
+  return `<span class="trend ${cls}">${up ? "▲" : "▼"} ${fmt(Math.abs(d), dec)}</span>`;
+}
+
+let shownLast = null;   // measurement shown in the card, to animate the change
+
+function renderLast(animate = false) {
+  const m = mine()[0];
+  const before = shownLast;
+  shownLast = m || null;
+  const p = profileOf(current);
+  const box = $("lastMetrics");
+  [...$("cmp").children].forEach((b) => b.classList.toggle("active", +b.dataset.days === cmpDays));
+  if (!m) { box.innerHTML = ""; $("lastTitle").textContent = t("lastMeasurement"); $("lastNote").textContent = t("noMeasurements"); return; }
+  $("lastTitle").textContent = `${t("lastMeasurement")} · ${fmtDate(m.measured_at)}`;
+  const ref = reference(m);
+  box.innerHTML = METRICS.map(([key, get, dec, suffix, dir]) => {
+    const v = get(m);
+    const shown = v == null ? "–" : num(v, dec) + suffix();
+    return `<div class="metric"><div class="val"><b>${shown}</b>${ref ? trend(v, get(ref), dec, dir) : ""}</div><span>${t(key)}</span></div>`;
+  }).join("");
+  // New measurement for the same person: numbers run from the old value to the new one.
+  if (animate && before && before.id !== m.id && before.profile_id === m.profile_id) {
+    [...box.children].forEach((el, i) => {
+      const [, get, dec, suffix] = METRICS[i];
+      const v = get(m), old = get(before);
+      el.style.setProperty("--i", i);
+      replay(el, "flash");
+      if (v != null && old != null) tween(el.querySelector("b"), v, dec, suffix(), 1100, old);
+    });
+    replay($("lastCard"), "glow");
+  }
+  const notes = [];
+  if (ref) notes.push(t("arrowsSince", { when: fmtDate(ref.measured_at) }));
+  else if (cmpDays) notes.push(t("noRef", { days: cmpDays }));
+  if (!p?.height_cm || !p?.birth) notes.push(t("needHeight"));
+  else if (!m.impedance) notes.push(t("noImpedance"));
+  $("lastNote").textContent = notes.join(" ");
+}
+
+$("cmp").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  cmpDays = +b.dataset.days;
+  try { localStorage.setItem("cmpDays", cmpDays); } catch {}
+  renderLast();
+});
+
+function movingAvg(points, windowDays = 7) {
+  return points.map((p) => {
+    const w = points.filter((q) => q.x <= p.x && p.x - q.x < windowDays * 864e5);
+    return { x: p.x, y: w.reduce((s, q) => s + q.y, 0) / w.length };
+  });
+}
+
+function renderChart(animate = false) {
+  const since = days ? Date.now() - days * 864e5 : 0;
+  const series = (f) => mine().filter((m) => f(m) != null).map((m) => ({ x: new Date(m.measured_at).getTime(), y: f(m) }))
+    .filter((p) => p.x >= since).reverse();
+  const pts = series((m) => mass(m.weight_kg));
+  const fat = series((m) => m.metrics?.body_fat);
+  const css = getComputedStyle(document.documentElement);
+  const accent = css.getPropertyValue("--accent").trim(), muted = css.getPropertyValue("--muted").trim(),
+        line = css.getPropertyValue("--line").trim(), warn = css.getPropertyValue("--warn").trim();
+  const data = {
+    datasets: [
+      { label: `${t("weight")} (${unit()})`, data: pts, borderColor: muted, backgroundColor: muted, pointRadius: 3, showLine: false, yAxisID: "y" },
+      { label: t("avg7"), data: movingAvg(pts), borderColor: accent, borderWidth: 2.5, pointRadius: 0, tension: .3, yAxisID: "y" },
+      { label: `${t("bodyFat")} (%)`, data: fat, borderColor: warn, borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0, tension: .3, yAxisID: "y2", hidden: !fat.length },
+    ],
+  };
+  if (chart) {
+    chart.options.animation = animate && !reduceMotion.matches ? { duration: 1000, easing: "easeOutCubic" } : false;
+    chart.data = data;
+    chart.update();
+    chart.options.animation = false;
+    return;
+  }
+  chart = new Chart($("chart"), {
+    type: "line", data,
+    options: {
+      locale: locale(), maintainAspectRatio: false, animation: false, interaction: { mode: "nearest", intersect: false },
+      scales: {
+        x: { type: "linear", grid: { color: line },
+             ticks: { color: muted, maxTicksLimit: 7, callback: (v, i, ticks) => {
+               // When everything fits in a couple of days the date repeats: show the time instead.
+               const span = ticks.length > 1 ? ticks.at(-1).value - ticks[0].value : 0;
+               return new Date(v).toLocaleString(locale(), span < 2 * 864e5
+                 ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit" });
+             } } },
+        y: { grid: { color: line }, ticks: { color: muted } },
+        y2: { position: "right", grid: { display: false }, ticks: { color: warn } },
+      },
+      plugins: {
+        legend: { labels: { color: muted, boxWidth: 12 } },
+        tooltip: { callbacks: { title: (items) => fmtDate(items[0].parsed.x) } },
+      },
+    },
+  });
+}
+
+let seenIds = null;
+let historyRows = 15;   // measurements already shown, to highlight new ones
+
+function renderHistory(animate = false) {
+  const fresh = new Set(animate && seenIds ? all.filter((m) => !seenIds.has(m.id)).map((m) => m.id) : []);
+  seenIds = new Set(all.map((m) => m.id));
+  const rows = $("showAll").checked ? all : all.filter((m) => m.profile_id === current || m.profile_id == null);
+  const opts = (sel) => `<option value="">${t("unknown")}</option>` +
+    profiles.map((p) => `<option value="${p.id}" ${p.id === sel ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  $("more").hidden = rows.length <= historyRows;
+  $("history").innerHTML = rows.slice(0, historyRows).map((m) => {
+    const x = m.metrics || {};
+    return `<tr class="${m.profile_id === current ? "" : "outra"} ${fresh.has(m.id) ? "new" : ""}">
+      <td>${fmtDate(m.measured_at)}</td><td><b>${fmt(mass(m.weight_kg), 2)}</b></td>
+      <td>${x.body_fat != null ? fmt(x.body_fat) + "%" : "–"}</td>
+      <td>${x.muscle_mass != null ? fmt(mass(x.muscle_mass)) : "–"}</td>
+      <td>${x.water != null ? fmt(x.water) + "%" : "–"}</td>
+      <td>${fmt(x.visceral_fat)}</td>
+      <td><select onchange="assign(${m.id}, this.value)">${opts(m.profile_id)}</select></td>
+      <td><button class="link" onclick="del(${m.id})" title="${t("delete")}">✕</button></td></tr>`;
+  }).join("") || `<tr><td colspan="8" style="color:var(--muted)">${t("noMeasurements")}</td></tr>`;
+}
+$("showAll").addEventListener("change", () => renderHistory());
+
+async function assign(id, pid) {
+  await fetch(`/api/measurements/${id}`, { method: "PATCH", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ profile_id: pid ? +pid : null }) });
+  load();
+}
+
+async function del(id) {
+  if (!confirm(t("deleteMeasurement"))) return;
+  await fetch(`/api/measurements/${id}`, { method: "DELETE" });
+  load();
+}
+
+// ---------- Profile ----------
+function openProfile(id) {
+  const p = id ? profileOf(id) : {};
+  editing = id;
+  pendingPhoto = null;
+  $("pFile").value = "";
+  $("pTitle").textContent = id ? t("profile") : t("newPerson");
+  $("pName").value = p.name || "";
+  $("pHeight").value = p.height_cm || "";
+  $("pBirth").value = p.birth || "";
+  $("pMale").value = p.male === false ? "0" : "1";
+  $("pRefLabel").textContent = t("refWeight", { unit: unit() });
+  $("pRef").value = p.ref_weight ? +mass(p.ref_weight).toFixed(1) : "";
+  $("pDelete").style.display = id && profiles.length > 1 ? "" : "none";
+  renderPhotoEdit(p);
+  profileDlg.showModal();
+}
+
+function renderPhotoEdit(p) {
+  const src = pendingPhoto ? URL.createObjectURL(pendingPhoto) : null;
+  $("pAvatar").innerHTML = avatar({ ...p, name: $("pName").value || p.name }, src);
+  $("pPhotoRemove").style.display = pendingPhoto || p.photo ? "" : "none";
+}
+
+// Crops the center and scales it down to 512x512 before uploading.
+function squareJpeg(file, size = 512) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      c.toBlob((b) => b ? resolve(b) : reject(new Error(t("photoConvertFailed"))), "image/jpeg", .88);
+    };
+    img.onerror = () => reject(new Error(t("photoOpenFailed")));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+$("pFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try { pendingPhoto = await squareJpeg(f); } catch (err) { alert(err.message); return; }
+  renderPhotoEdit(editing ? profileOf(editing) : {});
+});
+
+async function removePhoto() {
+  if (pendingPhoto) { pendingPhoto = null; $("pFile").value = ""; renderPhotoEdit(editing ? profileOf(editing) : {}); return; }
+  if (!editing) return;
+  await fetch(`/api/profiles/${editing}/photo`, { method: "DELETE" });
+  await load();
+  renderPhotoEdit(profileOf(editing));
+}
+
+async function saveProfile(e) {
+  e.preventDefault();
+  const ref = +$("pRef").value || null;
+  const body = { name: $("pName").value.trim(), height_cm: +$("pHeight").value || null, birth: $("pBirth").value || null,
+    male: $("pMale").value === "1", ref_weight: ref && (unit() === "lb" ? +(ref * LB).toFixed(2) : ref) };
+  const r = await fetch(editing ? `/api/profiles/${editing}` : "/api/profiles", {
+    method: editing ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) { alert(JSON.stringify((await r.json().catch(() => ({}))).detail)); return; }
+  const p = await r.json();
+  if (pendingPhoto) {
+    const up = await fetch(`/api/profiles/${p.id}/photo`, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: pendingPhoto });
+    if (!up.ok) alert(t("photoFailed") + (await up.text()));
+  }
+  profileDlg.close();
+  current = p.id;
+  try { localStorage.setItem("profile", p.id); } catch {}
+  load();
+}
+
+async function deleteProfile() {
+  const p = profileOf(editing);
+  if (!confirm(t("confirmDeleteProfile", { name: p.name }))) return;
+  await fetch(`/api/profiles/${editing}`, { method: "DELETE" });
+  profileDlg.close();
+  current = null;
+  load();
+}
+
+// ---------- Settings ----------
+function openSettings() {
+  $("sLang").value = storedLang();
+  $("sUnit").value = unit();
+  $("sTolLabel").textContent = t("tolerance", { unit: unit() });
+  $("sTol").value = +mass(settings.tolerance_kg ?? 5).toFixed(1);
+  settingsDlg.showModal();
+}
+$("sUnit").addEventListener("change", () => {
+  // Keep the tolerance field in the unit being picked.
+  const tol = +$("sTol").value || 0;
+  const kg = settings.unit === "lb" && $("sUnit").value === "kg" ? tol * LB : settings.unit !== "lb" && $("sUnit").value === "lb" ? tol / LB : tol;
+  $("sTol").value = +kg.toFixed(1);
+});
+
+async function saveSettings(e) {
+  e.preventDefault();
+  try { localStorage.setItem("lang", $("sLang").value); } catch {}
+  lang = resolveLang($("sLang").value);
+  const u = $("sUnit").value;
+  const tol = +$("sTol").value || 5;
+  settings = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ unit: u, tolerance_kg: u === "lb" ? +(tol * LB).toFixed(2) : tol }) }).then((r) => r.json());
+  settingsDlg.close();
+  $("liveNum")._val = null;
+  redrawChart();
+  render();
+}
+
+$("range").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  days = +b.dataset.days;
+  [...$("range").children].forEach((c) => c.classList.toggle("active", c === b));
+  renderChart();
+});
+
+// ---------- Live scale ----------
+// Who is on the scale: the profile whose last weight is closest, within the tolerance.
+function guess(weight) {
+  let best = null, diff = Infinity;
+  for (const p of profiles) {
+    const last = all.find((m) => m.profile_id === p.id);
+    const ref = last ? last.weight_kg : p.ref_weight;
+    if (ref == null) continue;
+    const d = Math.abs(ref - weight);
+    if (d <= (settings.tolerance_kg ?? 5) && d < diff) { best = { p, last }; diff = d; }
+  }
+  return best;
+}
+
+let scanTimer = null, closeTimer = null, resultTimer = null, scanDismissed = false;
+let scanM = null, resultsKey = null, simulated = null;
+const RESULT_MS = 10000;   // how long the result stays on screen before closing
+
+const scanOpen = () => $("scan").classList.contains("open");
+
+// Point the circle grows from or shrinks into: the center of a card.
+function origin(el) {
+  const r = el.getBoundingClientRect();
+  const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth);
+  const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight);
+  $("scan").style.setProperty("--ox", x + "px");
+  $("scan").style.setProperty("--oy", y + "px");
+}
+
+function openScan() {
+  if (scanDismissed || scanOpen()) return;
+  const scan = $("scan");
+  scan.classList.remove("stable", "done", "results");
+  $("scanResults").innerHTML = "";
+  $("scanNum")._val = null;
+  scanM = null; resultsKey = null; simulated = null;
+  origin($("live"));
+  scan.classList.add("open");
+}
+
+function closeScan() {
+  const scan = $("scan");
+  if (!scanOpen()) return;
+  clearTimeout(scanTimer); clearTimeout(closeTimer); clearTimeout(resultTimer);
+  $("scanTimer").classList.remove("run");
+  $("scanHint").classList.remove("on");
+  // Don't reopen on the repeated packets of this weigh-in; the next one (settling weight) reopens it.
+  scanDismissed = true;
+  origin($("lastCard"));
+  scan.classList.remove("open");
+  setTimeout(() => {
+    if (simulated) {
+      // Simulation: show the fake measurement on the dashboard until the next reload.
+      all = [{ ...simulated, id: -Date.now(), measured_at: new Date().toISOString() }, ...all];
+      render(true);
+      setTimeout(load, 15000);
+    } else if (deferred) render(true);
+    deferred = false;
+    simulated = null;
+  }, 450);
+}
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && scanOpen()) closeScan(); });
+// Tapping the result keeps the screen open.
+$("scan").addEventListener("pointerdown", (e) => {
+  if (!e.target.closest(".scan-close") && $("scan").classList.contains("results")) {
+    clearTimeout(closeTimer);
+    $("scanTimer").classList.remove("run");
+    $("scanHint").classList.remove("on");
+  }
+});
+
+function setText(el, text) {
+  if (el.textContent === text) return;
+  el.textContent = text;
+  replay(el, "swap");
+}
+
+// The saved (or simulated) measurement that matches this weigh-in.
+function scanMeasurement(m, isSim) {
+  if (!scanOpen() || Math.abs(mass(m.weight_kg) - ($("scanNum")._val ?? mass(m.weight_kg))) > 0.3) return;
+  scanM = m;
+  if (isSim) simulated = m;
+  if (m.impedance || $("scan").classList.contains("done")) showResults();
+}
+
+function showResults() {
+  clearTimeout(resultTimer);
+  const scan = $("scan");
+  const m = scanM;
+  const key = m ? `${m.id}:${m.impedance}` : "weight";
+  if (key === resultsKey) return;
+  const first = resultsKey == null;
+  resultsKey = key;
+  const p = m && profileOf(m.profile_id);
+  const time = m ? new Date(m.measured_at).getTime() : Date.now();
+  const ref = p && all.find((h) => h.profile_id === p.id && h.id !== m.id && time - new Date(h.measured_at).getTime() >= 180000);
+  const items = m ? METRICS.slice(1).map(([key, get, dec, suffix, dir]) => ({ label: t(key), v: get(m), old: ref && get(ref), dec, suffix: suffix(), dir }))
+    .filter((x) => x.v != null) : [];
+  let note = "";
+  if (!m) note = t("resNotSaved");
+  else if (!p) note = t("resUnknown");
+  else if (!p.height_cm || !p.birth) note = t("resNoHeight");
+  else if (!m.impedance) note = t("resNoImp");
+  const box = $("scanResults");
+  box.innerHTML = items.map((x, i) =>
+    `<div class="res" style="--i:${i}"><div class="top"><b>–</b>${x.old != null ? trend(x.v, x.old, x.dec, x.dir) : ""}</div><span>${esc(x.label)}</span></div>`).join("")
+    + (note ? `<div class="scan-note">${esc(note)}</div>` : "");
+  // Each number runs from zero to its value, in the order the cards appear.
+  [...box.querySelectorAll(".res b")].forEach((b, i) => {
+    const x = items[i];
+    b.textContent = num(x.v, x.dec) + x.suffix;
+    if (!reduceMotion.matches) {
+      b.textContent = num(0, x.dec) + x.suffix;
+      setTimeout(() => tween(b, x.v, x.dec, x.suffix, 900, 0), 150 + i * 75);
+    }
+  });
+  scan.classList.add("results");
+  setText($("scanState"), t("done"));
+  if (first) {
+    $("scanTimer").style.setProperty("--dur", RESULT_MS + "ms");
+    replay($("scanTimer"), "run");
+    $("scanHint").classList.add("on");
+    closeTimer = setTimeout(closeScan, RESULT_MS);
+  }
+}
+
+function showScan(msg, g, deltaText) {
+  const scan = $("scan");
+  // Settling weight: a new weigh-in started.
+  if (!msg.stabilized && !msg.removed) scanDismissed = false;
+  if (!scanOpen()) {
+    if (msg.removed || msg.stabilized) return;   // repeated result of a weigh-in that already closed
+    openScan();
+  }
+  if (!scanOpen()) return;
+  if (msg.stabilized && !scan.classList.contains("stable")) replay($("scanWeight"), "lock");
+  scan.classList.toggle("stable", msg.stabilized);
+  const wasDone = scan.classList.contains("done");
+  const done = wasDone || msg.removed || (msg.stabilized && msg.impedance);
+  scan.classList.toggle("done", !!done);
+  tween($("scanNum"), mass(msg.weight_kg), 2, "", msg.stabilized ? 500 : 350);
+  const key = g ? `p${g.p.id}${g.p.photo || ""}` : "none";
+  if ($("scanAvatar").dataset.key !== key) {
+    $("scanAvatar").dataset.key = key;
+    $("scanAvatar").innerHTML = g ? avatar(g.p) : `<span class="avatar">⚖️</span>`;
+  }
+  setText($("scanName"), g ? g.p.name : (msg.stabilized ? t("notRecognized") : ""));
+  if (!scan.classList.contains("results"))
+    setText($("scanState"), done ? t("done") : msg.stabilized ? t("stableKeep") : t("readingScale"));
+  $("scanDelta").textContent = deltaText || "";
+  $("stWeight").classList.add("on");
+  $("stStable").classList.toggle("on", msg.stabilized);
+  $("stImp").classList.toggle("on", !!msg.impedance || (done && !!scanM?.impedance));
+  clearTimeout(scanTimer);
+  if (done && !wasDone) {
+    // Wait for the measurement with the metrics; without it in 2.5 s, show just the weight.
+    // The packet with the impedance arrives just before the measurement updated with it.
+    if (scanM && (scanM.impedance || !msg.impedance)) showResults();
+    else resultTimer = setTimeout(showResults, 2500);
+  }
+  // No packet for 20 s before the end: the person stepped off midway.
+  if (!done) scanTimer = setTimeout(closeScan, 20000);
+}
+
+function showLive(msg) {
+  clearTimeout(resetTimer);
+  const el = $("liveWeight");
+  tween($("liveNum"), mass(msg.weight_kg), 2, "", 350);
+  el.className = msg.stabilized ? "stable" : "measuring";
+  $("liveState").textContent = msg.removed ? t("done")
+    : msg.stabilized ? (msg.impedance ? t("ready", { imp: msg.impedance }) : t("stableMeasuring"))
+    : t("measuring");
+  const g = msg.stabilized ? guess(msg.weight_kg) : null;
+  let delta = "";
+  if (g) {
+    if (g.p.id !== current) select(g.p.id);
+    const prev = all.find((m) => m.profile_id === g.p.id && m.id > 0 && Date.now() - new Date(m.measured_at) > 180000);
+    if (prev) delta = t("since", { d: signed(mass(msg.weight_kg) - mass(prev.weight_kg), 2, " " + unit()), when: fmtDate(prev.measured_at) });
+    $("liveDelta").textContent = delta ? `${g.p.name} · ${delta}` : g.p.name;
+  } else $("liveDelta").textContent = msg.stabilized ? t("unknownPerson") : "";
+  showScan(msg, g, delta);
+  resetTimer = setTimeout(() => {
+    el.className = "measuring";
+    $("liveState").textContent = t("stepOn");
+  }, 60000);
+}
+
+function setConn(cls, key) { $("connDot").className = "dot " + cls; $("connText").dataset.t = key; $("connText").textContent = t(key); }
+
+function connect() {
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  ws.onopen = () => setConn("on", "live");
+  ws.onclose = () => { setConn("err", "reconnecting"); setTimeout(connect, 2000); };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "live") showLive(msg);
+    else if (msg.type === "measurement") {
+      if (msg.measurement) scanMeasurement(msg.measurement, msg.event === "simulated");
+      if (msg.event !== "simulated") load(true);
+    } else if (msg.type === "status") {
+      if (msg.scanner_error) setConn("err", "btError");
+      else if (!msg.scanner) setConn("", "scannerOff");
+    }
+  };
+}
+
+applyStrings();
+$("liveState").textContent = t("stepOn");
+applyTheme(getTheme());
+load();
+connect();
+</script>
+</body>
+</html>

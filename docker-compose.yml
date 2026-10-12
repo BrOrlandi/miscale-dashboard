@@ -1,0 +1,19 @@
+services:
+  miscale:
+    build: .
+    image: miscale-dashboard:local
+    container_name: miscale-dashboard
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8800:8800"
+    volumes:
+      # Database and profile photos.
+      - ./data:/data
+      # The BLE scanner talks to the host's BlueZ over the system D-Bus.
+      - /run/dbus:/run/dbus:ro
+    security_opt:
+      # Docker's default AppArmor profile blocks D-Bus ("AccessDenied ... AddMatch").
+      - apparmor=unconfined

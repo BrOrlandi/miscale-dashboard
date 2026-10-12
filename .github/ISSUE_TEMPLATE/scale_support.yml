@@ -1,0 +1,23 @@
+name: Support for another scale
+description: Ask for (or help with) a scale model that isn't supported yet
+labels: [scale-support]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Scale model and number
+      placeholder: Mi Smart Scale 2 (XMTZC04HM)
+    validations:
+      required: true
+  - type: textarea
+    id: devices
+    attributes:
+      label: What the adapter sees
+      description: Step on the scale and paste the scale's entry from /api/debug/devices (service data and manufacturer data).
+      render: json
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Can you help?
+      options:
+        - label: I can test changes with this scale
