@@ -4,6 +4,8 @@
 // - fetch("/api/...") is answered from memory (profiles, measurements, settings, photos);
 // - WebSocket is replaced by a fake socket that plays weigh-ins with the same "live" and
 //   "measurement" messages the server sends for a real scale;
+// - the weekly AI analysis is simulated: fixed texts filled in with the demo's own numbers,
+//   streamed over the fake socket like the server streams a real model's answer;
 // - the service worker is not registered (the demo lives under a subpath).
 // Everything resets when the page reloads.
 (function () {
@@ -33,7 +35,11 @@
   const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   const clone = (x) => JSON.parse(JSON.stringify(x));
 
-  const db = { profiles: [], measurements: [], settings: { tolerance_kg: 5.0, unit: "kg" }, nextId: 1, nextPid: 1 };
+  const db = { profiles: [], measurements: [], analyses: [], settings: { tolerance_kg: 5.0, unit: "kg" },
+    nextId: 1, nextPid: 1, nextAid: 1 };
+  // What the server reports about the weekly analysis: on, every Saturday at 9:00.
+  const AI = { ai_enabled: true, ai_weekday: 5, ai_hour: 9 };
+  const LB = 0.45359237;
   const photos = {};   // profile id -> image URL (the bundled photo or an uploaded blob)
 
   const profile = (pid) => db.profiles.find((p) => p.id === pid) || null;
@@ -99,7 +105,168 @@
         insert({ measured_at: at, weight_kg: weight, impedance, profile_id: p.id, metrics: metricsFor(p.id, weight, impedance, at) });
       }
     }
+    // Last Saturday's weekly analysis for Alex. Its text follows the page's language.
+    const sat = new Date(now);
+    sat.setDate(sat.getDate() - 1);
+    sat.setDate(sat.getDate() - ((sat.getDay() + 1) % 7));
+    const end = iso(sat).slice(0, 10);
+    sat.setHours(9, 0, 14);
+    db.analyses.push({ id: db.nextAid++, profile_id: 1, week_start: addDays(end, -6), week_end: end, kind: "weekly",
+      created_at: iso(sat), model: MODEL, lang: null, text: null });
   }
+
+  // ---------- Weekly analysis: fixed texts, filled in with the demo's own numbers ----------
+  const MODEL = "demo (simulated)";
+  const addDays = (day, n) => { const d = new Date(day + "T12:00"); d.setDate(d.getDate() + n); return iso(d).slice(0, 10); };
+  const pageLang = () => (typeof lang !== "undefined" && lang === "pt-BR" ? "pt-BR" : "en");   /* global lang */
+
+  function weekOf(pid, end) {   // weigh-ins in the 7 days that end on `end` (YYYY-MM-DD)
+    const start = addDays(end, -6);
+    return list(pid).filter((m) => m.measured_at.slice(0, 10) >= start && m.measured_at.slice(0, 10) <= end);
+  }
+
+  function weekStats(pid, end) {
+    const ms = weekOf(pid, end);
+    const mean = (f) => { const v = ms.map(f).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const w = ms.map((m) => m.weight_kg);
+    return { n: ms.length, weight: mean((m) => m.weight_kg), fat: mean((m) => m.metrics?.body_fat),
+      fatMass: mean((m) => m.metrics?.fat_mass), muscle: mean((m) => m.metrics?.muscle_mass),
+      visceral: mean((m) => m.metrics?.visceral_fat), swing: w.length > 1 ? Math.max(...w) - Math.min(...w) : 0 };
+  }
+
+  const TEXTS = {
+    en: {
+      first: (s) => `${s.name}, this is the first week with data, so take these numbers as your starting point: ${s.w} on average${s.f ? `, with body fat at ${s.f}` : ""}.`,
+      down: (s) => `${s.name}, your weight averaged ${s.w} this week, ${s.dw} less than the week before`,
+      up: (s) => `${s.name}, your weight averaged ${s.w} this week, ${s.dw} more than the week before`,
+      flat: (s) => `${s.name}, your weight averaged ${s.w} this week, about the same as the week before`,
+      fatDown: (s) => `, and body fat eased from ${s.pf} to ${s.f}.`, fatUp: (s) => `, while body fat went from ${s.pf} to ${s.f}.`,
+      fatFlat: (s) => `, with body fat steady at ${s.f}.`, noFat: () => ".",
+      monthDown: (s) => ` Over the last four weeks you are ${s.d4} lighter, a steady pace that is easy to keep.`,
+      monthUp: (s) => ` Over the last four weeks you are ${s.d4} heavier.`, monthFlat: () => " Over four weeks your weight has held steady.",
+      improved: "What improved", attention: "What needs attention", next: "For next week",
+      iWeight: (s) => `Average weight down ${s.dw} on the previous week.`,
+      iFat: (s) => `Body fat down ${s.df} points${s.fm ? `, with fat mass at ${s.fm}` : ""}.`,
+      iMuscle: (s) => `Muscle mass held at ${s.m}, so what you lost was mostly fat.`,
+      iMuscleUp: (s) => `Muscle mass up ${s.dm}, to ${s.m}.`,
+      iRoutine: (s) => `${s.n} weigh-ins this week: a reliable average.`,
+      iKeep: () => "You kept weighing in, which is what makes a trend visible.",
+      aSwing: (s) => `Daily readings still moved by up to ${s.swing}: that is water and meals, not fat, so go by the weekly average.`,
+      aWeight: (s) => `Weight up ${s.dw} on the week. One week is not a trend, but keep an eye on it.`,
+      aFat: (s) => `Body fat up ${s.df} points on the previous week.`,
+      aMuscle: (s) => `Muscle mass down ${s.dm}; enough protein and some strength work help keep it.`,
+      aFew: (s) => `Only ${s.n} weigh-ins this week, so the averages are rough.`,
+      aVisceral: (s) => `Visceral fat is at ${s.v}. It comes down slowly, so give it a few more weeks.`,
+      aNone: () => "Nothing stands out. Keep the same routine.",
+      nWeigh: "Weigh in every morning, before eating and barefoot, so the averages stay comparable.",
+      nProtein: "Have some protein at every meal and a couple of strength sessions to protect muscle while you lose fat.",
+      nSleep: "Keep sleep and water regular: both make the readings steadier.",
+    },
+    "pt-BR": {
+      first: (s) => `${s.name}, esta é a primeira semana com dados, então use estes números como ponto de partida: ${s.w} de média${s.f ? `, com gordura em ${s.f}` : ""}.`,
+      down: (s) => `${s.name}, seu peso ficou em ${s.w} de média nesta semana, ${s.dw} a menos que na semana anterior`,
+      up: (s) => `${s.name}, seu peso ficou em ${s.w} de média nesta semana, ${s.dw} a mais que na semana anterior`,
+      flat: (s) => `${s.name}, seu peso ficou em ${s.w} de média nesta semana, praticamente igual à semana anterior`,
+      fatDown: (s) => `, e a gordura caiu de ${s.pf} para ${s.f}.`, fatUp: (s) => `, enquanto a gordura foi de ${s.pf} para ${s.f}.`,
+      fatFlat: (s) => `, com a gordura estável em ${s.f}.`, noFat: () => ".",
+      monthDown: (s) => ` Nas últimas quatro semanas você está ${s.d4} mais leve, num ritmo constante e fácil de manter.`,
+      monthUp: (s) => ` Nas últimas quatro semanas você está ${s.d4} mais pesado.`, monthFlat: () => " Em quatro semanas o peso ficou estável.",
+      improved: "O que melhorou", attention: "O que pede atenção", next: "Para a próxima semana",
+      iWeight: (s) => `Peso médio ${s.dw} abaixo da semana anterior.`,
+      iFat: (s) => `Gordura ${s.df} ponto${s.df === "1,0" ? "" : "s"} abaixo${s.fm ? `, com ${s.fm} de massa gorda` : ""}.`,
+      iMuscle: (s) => `Massa muscular mantida em ${s.m}: o que você perdeu foi principalmente gordura.`,
+      iMuscleUp: (s) => `Massa muscular subiu ${s.dm}, para ${s.m}.`,
+      iRoutine: (s) => `${s.n} pesagens na semana: uma média confiável.`,
+      iKeep: () => "Você continuou se pesando, e é isso que deixa a tendência visível.",
+      aSwing: (s) => `As pesagens do dia a dia ainda variaram até ${s.swing}: isso é água e refeição, não gordura, então guie-se pela média da semana.`,
+      aWeight: (s) => `Peso ${s.dw} acima na semana. Uma semana não é tendência, mas vale acompanhar.`,
+      aFat: (s) => `Gordura ${s.df} ponto${s.df === "1,0" ? "" : "s"} acima da semana anterior.`,
+      aMuscle: (s) => `Massa muscular ${s.dm} abaixo; proteína suficiente e um pouco de musculação ajudam a manter.`,
+      aFew: (s) => `Só ${s.n} pesagens na semana, então as médias são aproximadas.`,
+      aVisceral: (s) => `A gordura visceral está em ${s.v}. Ela cai devagar, então dê mais algumas semanas.`,
+      aNone: () => "Nada chama atenção. Mantenha a mesma rotina.",
+      nWeigh: "Pese-se toda manhã, em jejum e descalço, para as médias continuarem comparáveis.",
+      nProtein: "Inclua proteína em todas as refeições e duas sessões de musculação para proteger o músculo enquanto perde gordura.",
+      nSleep: "Mantenha sono e água regulares: os dois deixam as leituras mais estáveis.",
+    },
+  };
+
+  // The analysis of the 7 days ending on `end`, in plain text like the server's model writes it.
+  function writeAnalysis(pid, end, language) {
+    const T = TEXTS[language] || TEXTS.en;
+    const loc = language === "pt-BR" ? "pt-BR" : "en-US", lb = db.settings.unit === "lb";
+    const num = (v, d = 1) => Math.abs(v).toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d });
+    const kg = (v, d = 1) => `${num(lb ? v / LB : v, d)} ${lb ? "lb" : "kg"}`;
+    const w = weekStats(pid, end), prev = weekStats(pid, addDays(end, -7)), month = weekStats(pid, addDays(end, -28));
+    const has = (a, b) => a != null && b != null;
+    const dw = has(w.weight, prev.weight) ? w.weight - prev.weight : 0, df = has(w.fat, prev.fat) ? w.fat - prev.fat : 0;
+    const dm = has(w.muscle, prev.muscle) ? w.muscle - prev.muscle : 0;
+    const d4 = has(w.weight, month.weight) ? w.weight - month.weight : null;
+    const s = { name: profile(pid).name, n: w.n, w: kg(w.weight), dw: kg(dw), d4: d4 == null ? "" : kg(d4),
+      f: w.fat != null ? num(w.fat) + "%" : "", pf: prev.fat != null ? num(prev.fat) + "%" : "", df: num(df),
+      fm: w.fatMass != null ? kg(w.fatMass) : "", m: w.muscle != null ? kg(w.muscle) : "", dm: kg(dm),
+      v: w.visceral != null ? num(w.visceral, 0) : "", swing: kg(w.swing) };
+    let summary;
+    if (!prev.n) summary = T.first(s);
+    else {
+      summary = T[dw <= -0.1 ? "down" : dw >= 0.1 ? "up" : "flat"](s) +
+        (w.fat == null || prev.fat == null ? T.noFat(s) : T[df <= -0.1 ? "fatDown" : df >= 0.1 ? "fatUp" : "fatFlat"](s));
+      if (d4 != null && month.n) summary += T[d4 <= -0.3 ? "monthDown" : d4 >= 0.3 ? "monthUp" : "monthFlat"](s);
+    }
+    const good = [], watch = [];
+    if (prev.n) {
+      if (dw <= -0.1) good.push(T.iWeight(s));
+      if (df <= -0.1) good.push(T.iFat(s));
+      if (w.muscle != null && prev.muscle != null) {
+        if (dm >= 0.2) good.push(T.iMuscleUp(s));
+        else if (dm > -0.2 && dw <= -0.1) good.push(T.iMuscle(s));
+        else if (dm <= -0.2) watch.push(T.aMuscle(s));
+      }
+      if (dw >= 0.1) watch.push(T.aWeight(s));
+      if (df >= 0.1) watch.push(T.aFat(s));
+    }
+    if (w.n >= 6) good.push(T.iRoutine(s));
+    if (w.n < 4) watch.push(T.aFew(s));
+    if (w.swing >= 0.5) watch.push(T.aSwing(s));
+    if (w.visceral != null && w.visceral >= 13) watch.push(T.aVisceral(s));
+    const items = (xs, empty) => (xs.length ? xs : [empty]).slice(0, 3).map((x) => "• " + x).join("\n");
+    return [summary, T.improved + "\n" + items(good, T.iKeep(s)), T.attention + "\n" + items(watch, T.aNone(s)),
+      T.next + "\n" + [T.nWeigh, T.nProtein, T.nSleep].map((x) => "• " + x).join("\n")].join("\n\n");
+  }
+
+  const analysisRow = (a) => ({ ...clone(a), text: a.text ?? writeAnalysis(a.profile_id, a.week_end, pageLang()),
+    lang: a.lang ?? pageLang() });
+
+  // "Generate now": the text goes out a few characters at a time over the socket, as a real
+  // model's stream does, and the request answers once it is all written.
+  let writingFor = null;
+  async function writeNow(pid) {
+    if (!profile(pid)) return json({ detail: "profile not found" }, 404);
+    const end = iso(new Date()).slice(0, 10);
+    if (!weekOf(pid, end).length) return json({ detail: "no weigh-in in the last 7 days" }, 409);
+    if (writingFor != null) return json({ detail: "an analysis for this profile is already being written" }, 409);
+    writingFor = pid;
+    try {
+      const language = pageLang();
+      const text = writeAnalysis(pid, end, language);
+      broadcast({ type: "analysis_start", profile_id: pid });
+      await sleep(900);   // the model reading the numbers
+      for (let i = 0; i < text.length;) {
+        const k = 2 + Math.floor(Math.random() * 5);
+        broadcast({ type: "analysis_delta", profile_id: pid, text: text.slice(i, i + k), reset: i === 0 });
+        i += k;
+        await sleep(text.slice(i - k, i).includes("\n") ? 160 : 16 + Math.random() * 22);
+      }
+      const a = { id: db.nextAid++, profile_id: pid, week_start: addDays(end, -6), week_end: end, kind: "manual",
+        created_at: iso(new Date()), model: MODEL, lang: language, text };
+      db.analyses.push(a);
+      broadcast({ type: "analysis", profile_id: pid, analysis: clone(a) });
+      return json(clone(a));
+    } finally {
+      writingFor = null;
+    }
+  }
+
   seed();
 
   // ---------- fetch("/api/...") ----------
@@ -153,6 +320,7 @@
       if (method === "DELETE") {
         dropPhoto(pid);
         db.measurements.forEach((row) => { if (row.profile_id === pid) row.profile_id = null; });
+        db.analyses = db.analyses.filter((a) => a.profile_id !== pid);
         db.profiles = db.profiles.filter((p) => p.id !== pid);
         return json({ ok: true });
       }
@@ -174,8 +342,15 @@
       if (method === "PUT") {
         for (const [k, v] of Object.entries(body || {})) if (v != null && k in db.settings) db.settings[k] = v;
       }
-      return json(clone(db.settings));
+      return json({ ...clone(db.settings), ...AI });
     }
+    if (path === "analyses" && method === "GET") {
+      const pid = +query.get("profile_id") || null;
+      const rows = db.analyses.filter((a) => !pid || a.profile_id === pid)
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : b.id - a.id));
+      return json(rows.slice(0, +(query.get("limit") || 20)).map(analysisRow));
+    }
+    if (path === "analyses/run" && method === "POST") return writeNow(+query.get("profile_id"));
     if (path === "debug/simulate" && method === "POST") {
       weighIn(+(query.get("weight") || 75), +(query.get("impedance") || 500));
       return json({ ok: true });
@@ -268,13 +443,25 @@
     }
   }
 
-  // Alex steps on the scale a little lighter than last time.
-  function playAlex() {
+  // Alex steps on the scale a little lighter than last time. The tour ends with Alex's weekly
+  // analysis being written in the card, as if an AI model were typing it.
+  async function playAlex() {
+    if (playing) return;
     const alex = db.profiles.find((p) => p.name === "Alex") || db.profiles[0];
     const l = alex && last(alex.id);
     const weight = l ? Math.round((l.weight_kg - 0.25 - Math.random() * 0.3) * 100) / 100 : 81.4;
     const impedance = l?.impedance ? l.impedance - 2 - Math.floor(Math.random() * 4) : 478;
-    weighIn(weight, impedance);
+    await weighIn(weight, impedance);
+    /* global current, runAnalysis */
+    const scan = document.getElementById("scan");
+    for (let i = 0; i < 120 && scan.classList.contains("open"); i++) await sleep(500);   // tapped to keep it open
+    await sleep(900);
+    if (!alex || current !== alex.id || writingFor != null) return;
+    const card = document.getElementById("anCard");
+    if (card.getBoundingClientRect().top > innerHeight * 0.55) {
+      card.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    }
+    runAnalysis();
   }
 
   // ---------- Banner and "Play demo" button ----------

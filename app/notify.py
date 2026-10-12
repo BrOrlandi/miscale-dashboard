@@ -1,4 +1,4 @@
-"""Optional notification for every new weigh-in: a generic webhook and/or Telegram.
+"""Optional notification for every new weigh-in (and the weekly analysis): a generic webhook and/or Telegram.
 
 - MISCALE_WEBHOOK_URL: receives a JSON POST with the text and the measurement (works with
   n8n, Node-RED, Home Assistant webhooks, Gotify bridges...).
@@ -33,6 +33,7 @@ TEXT = {
         "no_impedance": "No impedance (step on barefoot and wait for the measurement to finish).",
         "no_height": "Set height and birth date in the profile to see body composition.",
         "date": "%b %d %H:%M",
+        "analysis": "🧠 Weekly analysis · {name} ({start} – {end})", "day": "%b %d",
     },
     "pt-BR": {
         "unknown": "⚖️ Pesagem de {w} sem dono: o peso não bate com nenhum perfil.\nEscolha a pessoa no histórico.",
@@ -44,6 +45,7 @@ TEXT = {
         "no_impedance": "Sem impedância (suba descalço e espere o fim da medição).",
         "no_height": "Cadastre altura e nascimento no perfil para ver a composição corporal.",
         "date": "%d/%m %H:%M",
+        "analysis": "🧠 Análise da semana · {name} ({start} a {end})", "day": "%d/%m",
     },
 }
 
@@ -106,21 +108,35 @@ def message(m: dict, profile: dict | None, history: list[dict], unit: str = "kg"
     return "\n".join(lines)
 
 
+def analysis_message(a: dict, profile: dict, lang: str = LANG) -> str:
+    t = TEXT.get(lang, TEXT["en"])
+    start, end = (datetime.fromisoformat(a[k]).strftime(t["day"]) for k in ("week_start", "week_end"))
+    lines = [t["analysis"].format(name=profile["name"], start=start, end=end), "", a["text"]]
+    if PUBLIC_URL:
+        lines += ["", PUBLIC_URL]
+    return "\n".join(lines)
+
+
 def _post(url: str, payload: dict):
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     urllib.request.urlopen(req, timeout=15).read()
 
 
-async def send(text: str, measurement: dict | None = None, profile: dict | None = None) -> bool:
+async def send(text: str, measurement: dict | None = None, profile: dict | None = None,
+               analysis: dict | None = None) -> bool:
+    """Sends `text`. The webhook also gets the measurement, or the weekly analysis."""
     if not enabled():
         log.info("no notifier configured; message only logged:\n%s", text)
         return False
     ok = True
     if WEBHOOK:
-        payload = {"event": "measurement", "text": text, "message": text,
-                   "profile": {k: profile.get(k) for k in ("id", "name")} if profile else None,
-                   "measurement": measurement}
+        payload = {"event": "analysis" if analysis else "measurement", "text": text, "message": text,
+                   "profile": {k: profile.get(k) for k in ("id", "name")} if profile else None}
+        if analysis:
+            payload["analysis"] = analysis
+        else:
+            payload["measurement"] = measurement
         try:
             await asyncio.to_thread(_post, WEBHOOK, payload)
         except OSError as exc:

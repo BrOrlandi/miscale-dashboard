@@ -1,4 +1,4 @@
-"""SQLite storage: measurements, profiles, settings and raw packets (for debugging)."""
+"""SQLite storage: measurements, profiles, weekly analyses, settings and raw packets (for debugging)."""
 
 from __future__ import annotations
 
@@ -33,6 +33,19 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    week_start TEXT NOT NULL,
+    week_end TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    model TEXT,
+    lang TEXT,
+    text TEXT NOT NULL,
+    data TEXT
+);
+CREATE INDEX IF NOT EXISTS analyses_profile ON analyses(profile_id, created_at);
 CREATE TABLE IF NOT EXISTS packets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     at TEXT NOT NULL,
@@ -83,6 +96,7 @@ class DB:
 
     def delete_profile(self, pid: int):
         self.conn.execute("UPDATE measurements SET profile_id = NULL WHERE profile_id = ?", (pid,))
+        self.conn.execute("DELETE FROM analyses WHERE profile_id = ?", (pid,))
         self.conn.execute("DELETE FROM profiles WHERE id = ?", (pid,))
         self.conn.commit()
 
@@ -125,6 +139,29 @@ class DB:
         row = self.conn.execute(
             "SELECT * FROM measurements WHERE profile_id = ? ORDER BY measured_at DESC LIMIT 1", (profile_id,)).fetchone()
         return _row(row) if row else None
+
+    # ---------- Weekly analyses ----------
+    def add_analysis(self, a: dict) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO analyses (profile_id, week_start, week_end, kind, created_at, model, lang, text, data)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (a["profile_id"], a["week_start"], a["week_end"], a["kind"], a["created_at"], a.get("model"),
+             a.get("lang"), a["text"], json.dumps(a.get("data") or {}, ensure_ascii=False)))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def analyses(self, profile_id: int | None = None, limit: int = 20) -> list[dict]:
+        """Newest first, without the numbers sent to the model."""
+        sql = "SELECT id, profile_id, week_start, week_end, kind, created_at, model, lang, text FROM analyses"
+        args: tuple = ()
+        if profile_id:
+            sql += " WHERE profile_id = ?"
+            args = (profile_id,)
+        return [dict(r) for r in self.conn.execute(sql + " ORDER BY created_at DESC, id DESC LIMIT ?", (*args, limit))]
+
+    def has_weekly(self, profile_id: int, week_end: str) -> bool:
+        return bool(self.conn.execute("SELECT 1 FROM analyses WHERE profile_id = ? AND week_end = ? AND kind = 'weekly'",
+                                      (profile_id, week_end)).fetchone())
 
     # ---------- Settings and packets ----------
     def settings(self) -> dict:

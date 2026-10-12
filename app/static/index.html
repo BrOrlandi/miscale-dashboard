@@ -244,6 +244,26 @@ tr.new td { animation: rowIn 2.4s ease; }
   .waves span:nth-child(2) { transform: scale(2); } .waves span:nth-child(3) { transform: scale(3); }
   .ring svg.arcs, .burst, .res, .metric.flash, .card.glow, tr.new td, .scan-weight.lock { animation: none !important; }
 }
+/* Weekly analysis: typed in live while the model writes it */
+.analysis { line-height: 1.6; max-width: 72ch; }
+.analysis p { margin: 0 0 10px; }
+.analysis ul { margin: 0 0 10px; padding-left: 20px; }
+.analysis li { margin-bottom: 2px; }
+.analysis h3 { font-size: 14px; margin: 16px 0 6px; }
+.analysis .meta { font-size: 12px; color: var(--muted); margin-top: 12px; }
+.analysis.empty, .analysis.off { color: var(--muted); }
+.analysis.off code { font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; color: var(--ink); }
+.analysis.off a { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.analysis .error { color: var(--danger); }
+.analysis.typing { min-height: 3.2em; }
+#anCard { scroll-margin-top: 16px; }
+.caret { display: inline-block; width: .5em; height: 1.15em; margin-left: 1px; vertical-align: -.2em; border-radius: 1px;
+  background: var(--accent); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.analysis.written { animation: fadeIn .5s ease; }
+#anRun[hidden] { display: none; }
+#anRun:disabled { opacity: .65; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; } .analysis.written { animation: none; } }
 .more { text-align: center; margin-top: 8px; }
 /* Install: button (Chrome, Edge, Android) and a hint for iOS Safari */
 #installBtn[hidden], .ios-hint[hidden] { display: none; }
@@ -304,6 +324,14 @@ tr.new td { animation: rowIn 2.4s ease; }
       <div class="note" id="lastNote"></div>
     </div>
   </div>
+
+  <section class="card" id="anCard">
+    <div class="head">
+      <h2 id="anTitle" data-t="analysisTitle"></h2>
+      <button id="anRun" onclick="runAnalysis()" data-t="generateNow" hidden></button>
+    </div>
+    <div class="analysis empty" id="analysis" aria-live="polite"></div>
+  </section>
 
   <section class="card">
     <div class="head">
@@ -435,6 +463,13 @@ const STRINGS = {
     language: "Language", langAuto: "Automatic (browser)", unitLabel: "Weight unit",
     tolerance: "Tolerance to recognize a person by weight ({unit})",
     tolNote: "A weigh-in goes to the profile whose last weight is closest, within this tolerance. Otherwise it is saved as \"unknown\" and you can assign it in the history.",
+    analysisTitle: "Weekly analysis", analysisRange: "{start} – {end}", generateNow: "Generate now", writing: "Writing…",
+    analysisEmpty: "No analysis yet. The next one is written on {day} at {hour}, or generate one now.",
+    analysisMeta: "Written {when} · {model}",
+    analysisOff: "A short weekly summary of your trends, written by an AI model (OpenAI, OpenRouter or a local Ollama). To turn it on, set {var} on the server.",
+    analysisHowTo: "How to enable it", analysisDocs: "https://github.com/BrOrlandi/miscale-dashboard#ai-weekly-analysis-optional",
+    analysisNoData: "No weigh-in in the last 7 days to analyze yet.", analysisBusy: "An analysis is already being written.",
+    analysisFailed: "The analysis failed: {detail}",
   },
   "pt-BR": {
     connecting: "conectando", live: "Conectado", reconnecting: "reconectando", btError: "Bluetooth com erro", scannerOff: "scanner desligado",
@@ -470,6 +505,13 @@ const STRINGS = {
     language: "Idioma", langAuto: "Automático (navegador)", unitLabel: "Unidade de peso",
     tolerance: "Tolerância para reconhecer a pessoa pelo peso ({unit})",
     tolNote: "A pesagem vai para o perfil com o último peso mais perto, dentro dessa tolerância. Senão fica como \"desconhecido\" e dá para escolher a pessoa no histórico.",
+    analysisTitle: "Análise da semana", analysisRange: "{start} a {end}", generateNow: "Gerar agora", writing: "Escrevendo…",
+    analysisEmpty: "Nenhuma análise ainda. A próxima sai {day} às {hour}, ou gere uma agora.",
+    analysisMeta: "Escrita em {when} · {model}",
+    analysisOff: "Um resumo curto da sua semana, escrito por um modelo de IA (OpenAI, OpenRouter ou um Ollama local). Para ligar, defina {var} no servidor.",
+    analysisHowTo: "Como ligar", analysisDocs: "https://github.com/BrOrlandi/miscale-dashboard/blob/main/README.pt-BR.md#análise-semanal-com-ia-opcional",
+    analysisNoData: "Ainda não há pesagem nos últimos 7 dias para analisar.", analysisBusy: "Uma análise já está sendo escrita.",
+    analysisFailed: "A análise falhou: {detail}",
   },
 };
 
@@ -570,6 +612,7 @@ async function load(animate = false) {
     fetch("/api/settings").then((r) => r.json()),
   ]);
   if (!profileOf(current)) current = profiles[0]?.id ?? null;
+  for (const pid in analyses) delete analyses[pid];   // fetched again with the rest
   // While the weigh-in is on screen, the dashboard only changes (animated) once it closes.
   if (scanOpen()) { deferred = true; return; }
   render(animate);
@@ -588,6 +631,7 @@ function render(animate = false) {
   renderLast(animate);
   renderChart(animate);
   renderHistory(animate);
+  loadAnalysis();
 }
 
 // Card metrics: label key, value, decimals, suffix, and whether going up is good (+1), bad (-1) or neutral (0).
@@ -666,6 +710,158 @@ $("cmp").addEventListener("click", (e) => {
   try { localStorage.setItem("cmpDays", cmpDays); } catch {}
   renderLast();
 });
+
+// ---------- Weekly analysis (optional, AI) ----------
+// The model writes plain text: short paragraphs, section titles on their own line and "•" lists.
+// While it is being written, the last line is still growing: it stays a paragraph (or a list
+// item) with the caret, so a half-written line never jumps between a title and a paragraph.
+function renderAnalysisText(text, caret = false) {
+  const lines = text.replace(/\r/g, "").split("\n").map((l) => l.replace(/\*\*|__/g, "").replace(/^\s*#+\s*/, "").trim());
+  const open = caret ? lines.length - 1 : -1;
+  const bullet = /^[•\-*·]\s+/;
+  let html = "", list = false;
+  lines.forEach((l, i) => {
+    if (!l && i !== open) { if (list) { html += "</ul>"; list = false; } return; }
+    const item = bullet.test(l);
+    if (item && !list) { html += "<ul>"; list = true; }
+    if (!item && list) { html += "</ul>"; list = false; }
+    const body = esc(item ? l.replace(bullet, "").replace(/^\d+[.)]\s+/, "") : l) + (i === open ? `<span class="caret"></span>` : "");
+    if (item) html += `<li>${body}</li>`;
+    else if (i !== open && l.length <= 48 && !/[.!?;,]$/.test(l)) html += `<h3>${esc(l.replace(/:$/, ""))}</h3>`;
+    else html += `<p>${body}</p>`;
+  });
+  return html + (list ? "</ul>" : "");
+}
+
+const analyses = {};     // profile id -> latest analysis (null: none yet)
+let typing = null;       // { pid, text, shown, final, frame }: the analysis being written
+let analysisNote = "";   // an error to show under the card's text
+
+const dayShort = (s) => new Date(s + "T12:00").toLocaleDateString(locale(), { day: "numeric", month: "short" });
+const weekdayName = (wd) => new Date(2024, 0, 1 + wd).toLocaleDateString(locale(), { weekday: "long" });   // 2024-01-01 is a Monday
+
+async function loadAnalysis(force = false) {
+  if (!current || !settings.ai_enabled) return renderAnalysis();
+  if (force || !(current in analyses)) {
+    const pid = current;
+    const list = await fetch(`/api/analyses?profile_id=${pid}&limit=1`).then((r) => r.ok ? r.json() : []).catch(() => []);
+    analyses[pid] = list[0] || null;
+  }
+  renderAnalysis();
+}
+
+function renderAnalysis() {
+  const box = $("analysis"), btn = $("anRun");
+  btn.hidden = !settings.ai_enabled;
+  $("anTitle").textContent = t("analysisTitle");
+  if (!settings.ai_enabled) {
+    box.className = "analysis off";
+    box.innerHTML = esc(t("analysisOff", { var: "%VAR%" })).replace("%VAR%", "<code>MISCALE_AI_API_KEY</code>") +
+      ` <a href="${esc(t("analysisDocs"))}" target="_blank" rel="noopener">${esc(t("analysisHowTo"))}</a>`;
+    return;
+  }
+  const busy = typing && typing.pid === current;
+  btn.disabled = !!busy || !current;
+  btn.textContent = busy ? t("writing") : t("generateNow");
+  if (busy) return renderTyping();
+  const a = analyses[current];
+  const note = analysisNote ? `<p class="error">${esc(analysisNote)}</p>` : "";
+  if (!a) {
+    const hour = new Date(2024, 0, 1, settings.ai_hour ?? 9).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+    box.className = "analysis empty";
+    box.innerHTML = `<p>${esc(t("analysisEmpty", { day: weekdayName(settings.ai_weekday ?? 5), hour }))}</p>` + note;
+    return;
+  }
+  $("anTitle").textContent = `${t("analysisTitle")} · ${t("analysisRange", { start: dayShort(a.week_start), end: dayShort(a.week_end) })}`;
+  box.className = "analysis";
+  box.innerHTML = renderAnalysisText(a.text) + note +
+    `<div class="meta">${esc(t("analysisMeta", { when: fmtDate(a.created_at), model: a.model || "" }))}</div>`;
+}
+
+function renderTyping() {
+  const box = $("analysis");
+  box.className = "analysis typing";
+  box.innerHTML = renderAnalysisText(typing.text.slice(0, typing.shown), true);
+}
+
+// The text arrives in bursts; it is shown a few characters per frame so it reads like typing,
+// speeding up when far behind. With reduced motion it appears all at once when it is done.
+function startTyping(pid) {
+  if (typing?.pid === pid) return;
+  if (typing) cancelAnimationFrame(typing.frame);
+  typing = { pid, text: "", shown: 0, final: null, frame: 0 };
+  analysisNote = "";
+  if (pid === current) renderAnalysis();
+}
+
+function typeMore(piece, reset) {
+  if (!typing) return;
+  if (reset) { typing.text = ""; typing.shown = 0; }
+  typing.text += piece;
+  if (!reduceMotion.matches && !typing.frame) typing.frame = requestAnimationFrame(typeFrame);
+}
+const instant = () => reduceMotion.matches || document.hidden;   // no frames to animate in a background tab
+
+function typeFrame() {
+  const ty = typing;
+  if (!ty) return;
+  ty.frame = 0;
+  const behind = ty.text.length - ty.shown;
+  if (behind > 0) {
+    ty.shown += Math.max(1, Math.ceil(behind / 18));
+    if (ty.pid === current) renderTyping();
+  }
+  if (ty.shown < ty.text.length) ty.frame = requestAnimationFrame(typeFrame);
+  else if (ty.final) finishTyping();
+}
+
+function endTyping(a) {
+  if (!typing) return;
+  typing.final = a;
+  typing.text = a.text;
+  if (instant() || typing.shown >= a.text.length) finishTyping();
+  else if (!typing.frame) typing.frame = requestAnimationFrame(typeFrame);
+}
+
+function finishTyping() {
+  const ty = typing;
+  typing = null;
+  if (!ty?.final) return renderAnalysis();
+  analyses[ty.pid] = ty.final;
+  if (ty.pid !== current) return;
+  renderAnalysis();
+  replay($("analysis"), "written");
+}
+
+function stopTyping(pid, note = "") {
+  if (!typing || typing.pid !== pid) return;
+  cancelAnimationFrame(typing.frame);
+  typing = null;
+  analysisNote = note;
+  if (pid === current) renderAnalysis();
+}
+
+async function runAnalysis() {
+  const pid = current;
+  if (!pid || typing?.pid === pid) return;
+  startTyping(pid);
+  let r;
+  try { r = await fetch(`/api/analyses/run?profile_id=${pid}`, { method: "POST" }); } catch (err) { r = null; }
+  if (r?.ok) return endTyping(await r.json());
+  const detail = r ? (await r.json().catch(() => ({}))).detail : "network";
+  const note = r?.status === 409 ? t(String(detail).includes("already") ? "analysisBusy" : "analysisNoData")
+    : r?.status === 503 ? "" : t("analysisFailed", { detail: detail ?? r?.status });
+  if (r?.status === 503) settings.ai_enabled = false;
+  if (r?.status === 409 && String(detail).includes("already")) return;   // another browser asked first: its text is typing here too
+  stopTyping(pid, note);
+}
+
+function onAnalysisMessage(msg) {
+  if (msg.type === "analysis_start") startTyping(msg.profile_id);
+  else if (msg.type === "analysis_delta") { startTyping(msg.profile_id); typeMore(msg.text, msg.reset); }
+  else if (msg.type === "analysis") { if (typing?.pid === msg.profile_id) endTyping(msg.analysis); else { analyses[msg.profile_id] = msg.analysis; if (msg.profile_id === current) renderAnalysis(); } }
+  else if (msg.type === "analysis_error") stopTyping(msg.profile_id);
+}
 
 function movingAvg(points, windowDays = 7) {
   return points.map((p) => {
@@ -1078,6 +1274,8 @@ function connect() {
     else if (msg.type === "measurement") {
       if (msg.measurement) scanMeasurement(msg.measurement, msg.event === "simulated");
       if (msg.event !== "simulated") load(true);
+    } else if (msg.type.startsWith("analysis")) {
+      onAnalysisMessage(msg);
     } else if (msg.type === "status") {
       if (msg.scanner_error) setConn("err", "btError");
       else if (!msg.scanner) setConn("", "scannerOff");

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import notify
+from . import analysis, notify
 from .db import DB
 from .scale import Reading, ScaleListener
 from .session import DEFAULT_TOLERANCE_KG, Session, guess_profile, metrics_for
@@ -101,13 +101,98 @@ def on_reading(r: Reading):
             waiting[mid].set()
 
 
+# ---------- Weekly analysis (optional) ----------
+NO_WEIGH_INS = "no weigh-in in the last 7 days"
+writing: set[int] = set()   # profiles whose analysis is being written right now
+
+
+async def run_analysis(profile_id: int, week_end: date, kind: str, send: bool = False) -> dict:
+    """Writes the analysis of the 7 days ending on `week_end`, streaming it to every open browser."""
+    if not analysis.enabled():
+        raise HTTPException(503, "AI analysis is not configured (set MISCALE_AI_API_KEY)")
+    p = db.profile(profile_id)
+    if not p:
+        raise HTTPException(404, "profile not found")
+    data = analysis.stats(p, db.list(profile_id, limit=100000), week_end, settings()["unit"])
+    if not data["weigh_ins"]:
+        raise HTTPException(409, NO_WEIGH_INS)
+    if profile_id in writing:
+        raise HTTPException(409, "an analysis for this profile is already being written")
+    writing.add(profile_id)
+    loop = asyncio.get_running_loop()
+    # The model writes in a thread; its pieces go out over the WebSocket in order.
+    pieces: asyncio.Queue = asyncio.Queue()
+
+    async def pump():
+        while (item := await pieces.get()) is not None:
+            await hub.send({"type": "analysis_delta", "profile_id": profile_id, "text": item[0], "reset": item[1]})
+
+    pumping = asyncio.create_task(pump())
+    try:
+        await hub.send({"type": "analysis_start", "profile_id": profile_id})
+        text, model = await asyncio.to_thread(
+            analysis.generate, data, lambda piece, reset: loop.call_soon_threadsafe(pieces.put_nowait, (piece, reset)))
+    except RuntimeError as exc:
+        log.warning("analysis of %s failed: %s", p["name"], exc)
+        await hub.send({"type": "analysis_error", "profile_id": profile_id})
+        raise HTTPException(502, f"the AI provider failed: {exc}") from exc
+    finally:
+        pieces.put_nowait(None)
+        await pumping
+        writing.discard(profile_id)
+    start, end = analysis.week_bounds(week_end)
+    aid = db.add_analysis({"profile_id": profile_id, "week_start": start.isoformat(), "week_end": end.isoformat(),
+                           "kind": kind, "created_at": datetime.now().isoformat(timespec="seconds"),
+                           "model": model, "lang": analysis.lang(), "text": text, "data": data})
+    saved = next(a for a in db.analyses(profile_id, limit=5) if a["id"] == aid)
+    log.info("analysis %s (%s) of %s written by %s", aid, kind, p["name"], model)
+    await hub.send({"type": "analysis", "profile_id": profile_id, "analysis": saved})
+    if send and notify.enabled():
+        await notify.send(notify.analysis_message(saved, p, analysis.lang()), profile=p, analysis=saved)
+    return saved
+
+
+async def weekly_scheduler():
+    """Every week (MISCALE_AI_WEEKDAY at MISCALE_AI_HOUR), one analysis per profile that weighed in.
+
+    If the server was off at that time, it catches up within two days. A failure is retried
+    30 minutes later.
+    """
+    retry_at: dict[int, datetime] = {}
+    while True:
+        try:
+            now = datetime.now()
+            day = analysis.due_week_end(now)
+            for p in db.profiles() if day else []:
+                if db.has_weekly(p["id"], day.isoformat()) or retry_at.get(p["id"], now) > now:
+                    continue
+                try:
+                    await run_analysis(p["id"], day, "weekly", send=True)
+                except HTTPException as exc:
+                    # No weigh-in this week: nothing to do until next week. Busy or failed: try again soon.
+                    later = timedelta(days=3) if exc.detail == NO_WEIGH_INS else timedelta(minutes=30)
+                    retry_at[p["id"]] = now + later
+                except Exception:
+                    log.exception("weekly analysis of %s failed", p["name"])
+                    retry_at[p["id"]] = now + timedelta(minutes=30)
+        except Exception:
+            log.exception("weekly analysis scheduler")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app):
-    task = asyncio.create_task(listener.run()) if SCANNER else None
-    if not SCANNER:
+    tasks = []
+    if SCANNER:
+        tasks.append(asyncio.create_task(listener.run()))
+    else:
         log.info("BLE scanner disabled (MISCALE_SCANNER=off)")
+    if analysis.enabled():
+        tasks.append(asyncio.create_task(weekly_scheduler()))
+        log.info("weekly AI analysis on: %s at %s, every %s at %02d:00", ", ".join(analysis.MODELS), analysis.BASE_URL,
+                 analysis.WEEKDAYS[analysis.WEEKDAY], analysis.HOUR)
     yield
-    if task:
+    for task in tasks:
         task.cancel()
 
 
@@ -263,10 +348,27 @@ def delete_photo(pid: int):
     return db.profile(pid)
 
 
+# ---------- Weekly analysis ----------
+@app.get("/api/analyses")
+def list_analyses(profile_id: int | None = None, limit: int = 20):
+    return db.analyses(profile_id, limit)
+
+
+@app.post("/api/analyses/run")
+async def run_analysis_now(profile_id: int, send: bool = False):
+    """Writes the analysis of the last 7 days now. It is notified only with send=true."""
+    return await run_analysis(profile_id, date.today(), "manual", send)
+
+
 # ---------- Settings ----------
+def public_settings() -> dict:
+    """Settings plus what the UI needs to know about the weekly analysis (read-only)."""
+    return {**settings(), "ai_enabled": analysis.enabled(), "ai_weekday": analysis.WEEKDAY, "ai_hour": analysis.HOUR}
+
+
 @app.get("/api/settings")
 def get_settings():
-    return settings()
+    return public_settings()
 
 
 class SettingsPatch(BaseModel):
@@ -277,7 +379,7 @@ class SettingsPatch(BaseModel):
 @app.put("/api/settings")
 def put_settings(patch: SettingsPatch):
     db.set_settings(patch.model_dump(exclude_none=True))
-    return settings()
+    return public_settings()
 
 
 # ---------- Debugging ----------
