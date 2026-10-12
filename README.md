@@ -17,7 +17,17 @@ composition. No Xiaomi account, no Zepp Life app, no cloud.
 | --- | --- | --- |
 | ![Weigh-in screen while the scale measures](docs/screenshots/weighin-stable.png) | ![Weigh-in screen with the result](docs/screenshots/weighin-result.png) | ![Result on a phone](docs/screenshots/mobile-result.png) |
 
-All data in the screenshots is made up (`scripts/seed_demo.py`).
+All data in the screenshots is made up (`scripts/seed_demo.py`), and Alex's photo is
+AI-generated, not a real person ([docs/demo](docs/demo/README.md)).
+
+## Live demo
+
+> **Available once GitHub Pages is enabled for this repository.**
+
+Try it at **<https://brorlandi.github.io/miscale-dashboard/>**. It is the same dashboard
+running entirely in your browser, with made-up data for two fictional people. It needs no
+scale, no Bluetooth and no server. Press **▶ Play demo** to watch a weigh-in from start to
+finish. Changes you make stay in the page and are gone when you reload it.
 
 ## Features
 
@@ -265,6 +275,17 @@ curl -X POST 'localhost:8800/api/debug/simulate?weight=81.4&impedance=478'
 pytest
 ruff check .
 ```
+
+The live demo is a static build of the same page with an in-memory backend
+(`demo/demo.js`) in place of the server:
+
+```bash
+python scripts/build_demo.py                     # writes site/
+python -m http.server -d site 8000               # open http://localhost:8000/
+```
+
+`.github/workflows/pages.yml` publishes it to GitHub Pages. It only runs by hand from the
+Actions tab, and the comment at the top of the file explains how to turn Pages on.
 
 ## Contributing
 

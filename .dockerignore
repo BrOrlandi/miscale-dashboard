@@ -7,3 +7,5 @@ scripts
 **/__pycache__
 .venv
 *.db
+demo
+site

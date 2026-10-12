@@ -30,6 +30,9 @@ ruff check .
 - **Weights are stored in kg.** Convert only for display.
 - **No new runtime dependencies** without a good reason; open an issue first.
 - **Respect `prefers-reduced-motion`** for any new animation.
+- **Keep the live demo working.** `scripts/build_demo.py` reuses `index.html` with a few checked
+  edits, and `demo/demo.js` stands in for the API. If you add or change an endpoint the page
+  calls, update `demo/demo.js` too; `pytest` fails if the build no longer matches the page.
 
 ## Adding another scale
 

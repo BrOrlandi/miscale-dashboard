@@ -17,8 +17,18 @@ conta da Xiaomi, do app Zepp Life nem de nuvem.
 | --- | --- | --- |
 | ![Tela da pesagem medindo](docs/screenshots/weighin-stable.png) | ![Tela da pesagem com o resultado](docs/screenshots/weighin-result.png) | ![Resultado no celular](docs/screenshots/mobile-result.png) |
 
-Os dados das imagens são inventados (`scripts/seed_demo.py`). A interface também está em
+Os dados das imagens são inventados (`scripts/seed_demo.py`). A foto do Alex foi gerada por
+IA e não é de uma pessoa real ([docs/demo](docs/demo/README.md)). A interface também está em
 português: ela segue o idioma do navegador, e dá para trocar em Configurações.
+
+## Demonstração ao vivo
+
+> **Disponível quando o GitHub Pages for ativado neste repositório.**
+
+Experimente em **<https://brorlandi.github.io/miscale-dashboard/>**. É o mesmo painel rodando
+inteiro no navegador, com dados inventados de duas pessoas fictícias. Não precisa de balança,
+de Bluetooth nem de servidor. Toque em **▶ Iniciar demo** para ver uma pesagem do começo ao
+fim. O que você mudar fica só na página e some quando ela é recarregada.
 
 ## Recursos
 
