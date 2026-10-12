@@ -4,22 +4,26 @@
     MISCALE_DB=data/demo.db MISCALE_SCANNER=off uvicorn app.main:app --port 8800
 
 Then play a fake weigh-in: curl -X POST 'localhost:8800/api/debug/simulate?weight=81.4&impedance=478'
+
+Alex gets the made-up photo in docs/demo/alex.jpg (see docs/demo/README.md); Sam keeps the initials.
 """
 
 import random
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from app.db import DB  # noqa: E402
 from app.session import metrics_for  # noqa: E402
 
 PEOPLE = [
-    # name, height, birth, male, start weight, end weight, impedance start, end
-    ("Alex", 178, "1991-04-13", True, 86.4, 81.6, 520, 478),
-    ("Sam", 166, "1994-09-02", False, 64.8, 62.1, 590, 560),
+    # name, height, birth, male, start weight, end weight, impedance start, end, photo
+    ("Alex", 178, "1991-04-13", True, 86.4, 81.6, 520, 478, ROOT / "docs" / "demo" / "alex.jpg"),
+    ("Sam", 166, "1994-09-02", False, 64.8, 62.1, 590, 560, None),
 ]
 
 
@@ -30,8 +34,15 @@ def main(path: str):
     rng = random.Random(7)
     now = datetime.now().replace(second=0, microsecond=0)
     days = 90
-    for name, height, birth, male, w0, w1, i0, i1 in PEOPLE:
+    photos = Path(path).parent / "photos"   # where the app keeps uploaded photos (app.main.PHOTOS)
+    for name, height, birth, male, w0, w1, i0, i1, photo in PEOPLE:
         pid = db.save_profile({"name": name, "height_cm": height, "birth": birth, "male": male, "ref_weight": w0})
+        for old in photos.glob(f"{pid}.*"):
+            old.unlink()
+        if photo:
+            photos.mkdir(parents=True, exist_ok=True)
+            shutil.copy(photo, photos / f"{pid}.jpg")
+            db.set_photo(pid, f"{pid}.jpg?v={int(datetime.now().timestamp())}")
         for d in range(days, 0, -1):
             if rng.random() < 0.18:   # skipped days
                 continue
