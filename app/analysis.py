@@ -1,19 +1,4 @@
-"""Optional weekly analysis of a profile's trends, written by a language model.
-
-It works with any OpenAI-compatible chat/completions API: OpenAI, OpenRouter, a local Ollama
-or LM Studio, and so on. It is off unless MISCALE_AI_API_KEY (or MISCALE_AI_ENABLED, for a
-local server that needs no key) is set.
-
-- MISCALE_AI_API_KEY: the provider's API key. Empty disables the feature.
-- MISCALE_AI_ENABLED: "true" turns it on without a key (Ollama), "false" turns it off.
-- MISCALE_AI_BASE_URL: default https://api.openai.com/v1.
-- MISCALE_AI_MODEL: model name; a comma-separated list is tried in order.
-- MISCALE_AI_WEEKDAY / MISCALE_AI_HOUR: when the weekly analysis runs (default Saturday 9:00).
-- MISCALE_AI_LANG: language of the text, en or pt-BR (default MISCALE_LANG).
-
-Only the numbers below are sent to the provider: the week's weigh-ins and body composition,
-the averages of the previous weeks, and the person's first name, age, height and sex.
-"""
+"""Optional weekly analysis of a profile's trends, written by a language model."""
 
 from __future__ import annotations
 
@@ -26,14 +11,15 @@ import urllib.request
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
-log = logging.getLogger("miscale.analysis")
+log = logging.getLogger("yunmai.analysis")
 
-API_KEY = os.environ.get("MISCALE_AI_API_KEY", "").strip()
-BASE_URL = (os.environ.get("MISCALE_AI_BASE_URL", "").strip() or "https://api.openai.com/v1").rstrip("/")
+API_KEY = (os.environ.get("YUNMAI_AI_API_KEY") or os.environ.get("MISCALE_AI_API_KEY", "")).strip()
+BASE_URL = (os.environ.get("YUNMAI_AI_BASE_URL") or os.environ.get("MISCALE_AI_BASE_URL", "")).strip() or "https://api.openai.com/v1"
+BASE_URL = BASE_URL.rstrip("/")
 DEFAULT_MODEL = "gpt-5.4-mini"
-MODELS = [m.strip() for m in (os.environ.get("MISCALE_AI_MODEL", "").strip() or DEFAULT_MODEL).split(",") if m.strip()]
-ENABLED = os.environ.get("MISCALE_AI_ENABLED", "").strip().lower()
-LANG = os.environ.get("MISCALE_AI_LANG", "").strip() or os.environ.get("MISCALE_LANG", "en")
+MODELS = [m.strip() for m in ((os.environ.get("YUNMAI_AI_MODEL") or os.environ.get("MISCALE_AI_MODEL", "")).strip() or DEFAULT_MODEL).split(",") if m.strip()]
+ENABLED = (os.environ.get("YUNMAI_AI_ENABLED") or os.environ.get("MISCALE_AI_ENABLED", "")).strip().lower()
+LANG = (os.environ.get("YUNMAI_AI_LANG") or os.environ.get("MISCALE_AI_LANG", "")).strip() or (os.environ.get("YUNMAI_LANG") or os.environ.get("MISCALE_LANG", "en"))
 TIMEOUT = 180
 LB = 0.45359237
 
@@ -48,8 +34,8 @@ def _weekday(value: str) -> int:
     return next((i for i, d in enumerate(WEEKDAYS) if v and d.startswith(v[:3])), 5)
 
 
-WEEKDAY = _weekday(os.environ.get("MISCALE_AI_WEEKDAY", "5"))
-HOUR = min(max(int(os.environ.get("MISCALE_AI_HOUR", "9") or 9), 0), 23)
+WEEKDAY = _weekday(os.environ.get("YUNMAI_AI_WEEKDAY") or os.environ.get("MISCALE_AI_WEEKDAY", "5"))
+HOUR = min(max(int(os.environ.get("YUNMAI_AI_HOUR") or os.environ.get("MISCALE_AI_HOUR", "9") or 9), 0), 23)
 
 
 def enabled() -> bool:
@@ -61,13 +47,17 @@ def enabled() -> bool:
 
 
 def lang() -> str:
-    return "pt-BR" if LANG.lower().startswith("pt") else "en"
+    if LANG.lower().startswith("es"):
+        return "es"
+    if LANG.lower().startswith("pt"):
+        return "pt-BR"
+    return "en"
 
 
 # ---------- Prompt ----------
 SYSTEM = {
     "en": """You are a friendly, down-to-earth health coach. You read one person's data from a
-bioimpedance scale (Xiaomi Mi Body Composition Scale 2) and write their weekly summary. You
+bioimpedance scale (Yunmai Smart Scale) and write their weekly summary. You
 only know these numbers: nothing about their training, sleep or food.
 
 Write in English, speaking to the person ("you"). Rules:
@@ -85,8 +75,25 @@ Write in English, speaking to the person ("you"). Rules:
 - This is not medical advice: don't diagnose, don't name conditions or medication, and
   suggest a professional only if something looks unusual.
 - Use the unit in the data. At most about 1200 characters. No greeting and no sign-off.""",
+    "es": """Eres un entrenador de salud cercano y práctico. Lees los datos de una persona obtenidos
+de una báscula de bioimpedancia (Báscula Inteligente Yunmai) y escribes su resumen semanal. Solo
+conoces estos números: nada sobre sus entrenamientos, sueño o comidas.
+
+Escribe en español, dirigiéndote a la persona ("tú"). Reglas:
+- Solo texto plano: nada de markdown, asteriscos, almohadillas ni tablas. Las viñetas empiezan con
+  "• " y no van numeradas.
+- Comienza con 2 o 3 frases resumiendo la semana: qué cambió en peso y composición corporal.
+- Luego las secciones "Lo que mejoró" y "A prestar atención", cada título en su propia línea
+  sin dos puntos, seguido de hasta 3 viñetas cortas con números.
+- Termina con la sección "Para la próxima semana" y 2 o 3 sugerencias prácticas y generales (rutina
+  de pesaje, actividad, proteína, agua, descanso).
+- La bioimpedancia fluctúa con hidratación, digestión y hora: analiza promedios y tendencias semanales,
+  nunca un único día aislado. Si hubo pocos pesajes esta semana, indícalo y sugiere pesarse a diario
+  a la misma hora (por la mañana, en ayunas, descalzo).
+- Esto no es consejo médico: no diagnostiques ni prescribas.
+- Usa la unidad de los datos. Máximo unos 1200 caracteres. Sin saludos ni despedidas.""",
     "pt-BR": """Você é um coach de saúde amigável e direto. Você lê os dados de uma pessoa numa
-balança de bioimpedância (Xiaomi Mi Body Composition Scale 2) e escreve o resumo da semana
+balança de bioimpedância (Balança Inteligente Yunmai) e escreve o resumo da semana
 dela. Você só conhece esses números: nada sobre treino, sono ou alimentação.
 
 Escreva em português do Brasil, falando com a pessoa ("você"). Regras:
@@ -107,20 +114,22 @@ Escreva em português do Brasil, falando com a pessoa ("você"). Regras:
 
 USER = {
     "en": "Scale data for the week (JSON):\n",
+    "es": "Datos de la báscula durante la semana (JSON):\n",
     "pt-BR": "Dados da balança na semana (JSON):\n",
 }
 
 
 def messages(data: dict, language: str | None = None) -> list[dict]:
     language = language or lang()
+    sys_content = SYSTEM.get(language, SYSTEM["en"])
+    usr_prefix = USER.get(language, USER["en"])
     return [
-        {"role": "system", "content": SYSTEM[language]},
-        {"role": "user", "content": USER[language] + json.dumps(data, ensure_ascii=False, indent=1)},
+        {"role": "system", "content": sys_content},
+        {"role": "user", "content": usr_prefix + json.dumps(data, ensure_ascii=False, indent=1)},
     ]
 
 
 # ---------- Numbers sent to the model ----------
-# (field, is a mass that follows the display unit)
 FIELDS = [
     ("weight", True), ("bmi", False), ("body_fat_pct", False), ("fat_mass", True), ("muscle_mass", True),
     ("water_pct", False), ("protein_pct", False), ("bone_mass", True), ("visceral_fat", False), ("bmr_kcal", False),
@@ -140,7 +149,6 @@ def _get(m: dict, field: str, unit: str):
 
 
 def _avg(values):
-    """One decimal is plenty for an average, and keeps the model from quoting noise."""
     values = [v for v in values if v is not None]
     return round(sum(values) / len(values), 1) if values else None
 
@@ -151,7 +159,6 @@ def week_bounds(week_end: date) -> tuple[date, date]:
 
 
 def stats(profile: dict, measurements: list[dict], week_end: date, unit: str = "kg") -> dict:
-    """The week that ends on `week_end` (7 days), the week before it and the last 8 weeks."""
     unit = "lb" if unit == "lb" else "kg"
 
     def between(a: date, b: date) -> list[dict]:
@@ -193,13 +200,7 @@ def stats(profile: dict, measurements: list[dict], week_end: date, unit: str = "
     }
 
 
-# ---------- Weekly schedule ----------
 def due_week_end(now: datetime, weekday: int = WEEKDAY, hour: int = HOUR, grace_days: int = 2) -> date | None:
-    """The day whose weekly analysis is due at `now`, or None.
-
-    The analysis is due from `hour` on the scheduled weekday; if the server was off then, it
-    still runs within the next `grace_days` days.
-    """
     day = now.date() - timedelta(days=(now.weekday() - weekday) % 7)
     due = datetime.combine(day, datetime.min.time()) + timedelta(hours=hour)
     if now < due:
@@ -208,9 +209,7 @@ def due_week_end(now: datetime, weekday: int = WEEKDAY, hour: int = HOUR, grace_
     return day if due <= now < due + timedelta(days=grace_days) else None
 
 
-# ---------- Calling the model ----------
 def clean(text: str) -> str:
-    """Drops the markdown some models add anyway."""
     lines = []
     for line in text.strip().splitlines():
         line = re.sub(r"^(\s*[•\-*]\s+)\d+[.)]\s+", r"\1", line.replace("**", "").replace("__", ""))
@@ -234,11 +233,6 @@ def _content(data: dict) -> str:
 
 
 def chat(model: str, msgs: list[dict], on_delta: Callable[[str], None] | None = None) -> str:
-    """One completion. With `on_delta`, asks for a stream and calls it with each piece of text.
-
-    Providers that ignore `stream` (and answer with plain JSON) still work; those that reject
-    it get the same request again without it.
-    """
     if on_delta is None:
         with urllib.request.urlopen(_request(model, msgs, False), timeout=TIMEOUT) as r:
             return _content(json.load(r))
@@ -277,11 +271,6 @@ def chat(model: str, msgs: list[dict], on_delta: Callable[[str], None] | None = 
 
 def generate(data: dict, on_delta: Callable[[str, bool], None] | None = None,
              language: str | None = None) -> tuple[str, str]:
-    """Writes the analysis; returns (text, model). Blocking: run it in a thread.
-
-    `on_delta(piece, reset)` receives the text as it is written; `reset` is True on the first
-    piece of each attempt, so a model that fails halfway is replaced by the next one cleanly.
-    """
     msgs = messages(data, language)
     errors = []
     for model in MODELS:
@@ -302,4 +291,4 @@ def generate(data: dict, on_delta: Callable[[str, bool], None] | None = None,
             detail = exc.read().decode("utf-8", "replace")[:300] if isinstance(exc, urllib.error.HTTPError) else str(exc)
             log.warning("model %s failed: %s", model, detail)
             errors.append(f"{model}: {detail}")
-    raise RuntimeError("; ".join(errors) or "no model configured (MISCALE_AI_MODEL)")
+    raise RuntimeError("; ".join(errors) or "no model configured (YUNMAI_AI_MODEL)")

@@ -1,4 +1,4 @@
-"""SQLite storage: measurements, profiles, weekly analyses, settings and raw packets (for debugging)."""
+"""SQLite storage: measurements, profiles, weekly analyses, settings and raw packets."""
 
 from __future__ import annotations
 
@@ -176,7 +176,6 @@ class DB:
     def log_packet(self, at, address, rssi, raw, keep: int = 5000):
         self.conn.execute("INSERT INTO packets (at, address, rssi, raw) VALUES (?, ?, ?, ?)",
                           (at, address, rssi, raw))
-        # Keep only the most recent packets; they are just for debugging.
         self.conn.execute("DELETE FROM packets WHERE id <= (SELECT MAX(id) FROM packets) - ?", (keep,))
         self.conn.commit()
 

@@ -5,7 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ /srv/app/
 
-ENV PYTHONUNBUFFERED=1 MISCALE_DB=/data/miscale.db
+ENV PYTHONUNBUFFERED=1 YUNMAI_DB=/data/yunmai.db
 VOLUME /data
 EXPOSE 8800
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \

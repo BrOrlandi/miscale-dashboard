@@ -1,4 +1,6 @@
-"""Mi Scale Dashboard: live weight from the Xiaomi Mi Body Composition Scale 2, profiles and history."""
+"""Yunmai Scale Dashboard: live weight from Yunmai smart scales, profiles and history."""
+
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -18,24 +20,24 @@ from .db import DB
 from .scale import Reading, ScaleListener
 from .session import DEFAULT_TOLERANCE_KG, Session, guess_profile, metrics_for
 
-logging.basicConfig(level=os.environ.get("MISCALE_LOG_LEVEL", "INFO"),
-                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("miscale")
+LOG_LEVEL = os.environ.get("YUNMAI_LOG_LEVEL") or os.environ.get("MISCALE_LOG_LEVEL", "INFO")
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("yunmai")
 
 STATIC = Path(__file__).parent / "static"
-DB_PATH = os.environ.get("MISCALE_DB", "/data/miscale.db")
+DEFAULT_DB = "/data/yunmai.db" if os.name != "nt" else "data/yunmai.db"
+DB_PATH = os.environ.get("YUNMAI_DB") or os.environ.get("MISCALE_DB", DEFAULT_DB)
 PHOTOS = Path(DB_PATH).parent / "photos"
 PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-SCANNER = os.environ.get("MISCALE_SCANNER", "on").lower() not in ("off", "0", "false", "no")
-# How long to wait for the impedance before sending the notification.
-NOTIFY_WAIT = float(os.environ.get("MISCALE_NOTIFY_WAIT", "25"))
+SCANNER_ENV = os.environ.get("YUNMAI_SCANNER") or os.environ.get("MISCALE_SCANNER", "on")
+SCANNER = SCANNER_ENV.lower() not in ("off", "0", "false", "no")
+NOTIFY_WAIT = float(os.environ.get("YUNMAI_NOTIFY_WAIT") or os.environ.get("MISCALE_NOTIFY_WAIT", "25"))
+SCALE_MAC = os.environ.get("YUNMAI_SCALE_MAC") or os.environ.get("MISCALE_SCALE_MAC") or None
 
 db = DB(DB_PATH)
 
 DEFAULTS = {
-    # A weigh-in farther than this from every profile's last weight is saved as "unknown".
     "tolerance_kg": DEFAULT_TOLERANCE_KG,
-    # Display unit for weights: "kg" or "lb". Everything is stored in kg.
     "unit": "kg",
 }
 
@@ -60,8 +62,7 @@ class Hub:
 
 hub = Hub()
 session = Session(db, tolerance=lambda: float(settings()["tolerance_kg"]))
-listener = ScaleListener(lambda r: on_reading(r), os.environ.get("MISCALE_SCALE_MAC") or None)
-# Measurements waiting for the impedance before the full notification goes out.
+listener = ScaleListener(lambda r: on_reading(r), SCALE_MAC)
 waiting: dict[int, asyncio.Event] = {}
 
 
@@ -78,7 +79,6 @@ async def notify_when_ready(mid: int):
         return
     profile = db.profile(m["profile_id"]) if m["profile_id"] else None
     if not profile:
-        # A weight that matches nobody (an object, a pet, a guest) stays in the history only.
         log.info("measurement %s has no owner (%.2f kg): not notifying", mid, m["weight_kg"])
         return
     history = [h for h in db.list(m["profile_id"], limit=50) if h["id"] != mid]
@@ -88,9 +88,14 @@ async def notify_when_ready(mid: int):
 def on_reading(r: Reading):
     at = datetime.now().isoformat(timespec="milliseconds")
     db.log_packet(at, r.address, r.rssi, r.raw)
-    loop = asyncio.get_running_loop()
-    loop.create_task(hub.send({"type": "live", "at": at, "weight_kg": r.weight_kg, "impedance": r.impedance,
-                               "stabilized": r.stabilized, "removed": r.removed, "rssi": r.rssi, "raw": r.raw}))
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(hub.send({
+        "type": "live", "at": at, "weight_kg": r.weight_kg, "impedance": r.impedance,
+        "stabilized": r.stabilized, "removed": r.removed, "rssi": r.rssi, "raw": r.raw
+    }))
     result = session.handle(r)
     if result:
         loop.create_task(hub.send({"type": "measurement", **result}))
@@ -103,13 +108,12 @@ def on_reading(r: Reading):
 
 # ---------- Weekly analysis (optional) ----------
 NO_WEIGH_INS = "no weigh-in in the last 7 days"
-writing: set[int] = set()   # profiles whose analysis is being written right now
+writing: set[int] = set()
 
 
 async def run_analysis(profile_id: int, week_end: date, kind: str, send: bool = False) -> dict:
-    """Writes the analysis of the 7 days ending on `week_end`, streaming it to every open browser."""
     if not analysis.enabled():
-        raise HTTPException(503, "AI analysis is not configured (set MISCALE_AI_API_KEY)")
+        raise HTTPException(503, "AI analysis is not configured (set YUNMAI_AI_API_KEY)")
     p = db.profile(profile_id)
     if not p:
         raise HTTPException(404, "profile not found")
@@ -120,7 +124,6 @@ async def run_analysis(profile_id: int, week_end: date, kind: str, send: bool = 
         raise HTTPException(409, "an analysis for this profile is already being written")
     writing.add(profile_id)
     loop = asyncio.get_running_loop()
-    # The model writes in a thread; its pieces go out over the WebSocket in order.
     pieces: asyncio.Queue = asyncio.Queue()
 
     async def pump():
@@ -153,11 +156,6 @@ async def run_analysis(profile_id: int, week_end: date, kind: str, send: bool = 
 
 
 async def weekly_scheduler():
-    """Every week (MISCALE_AI_WEEKDAY at MISCALE_AI_HOUR), one analysis per profile that weighed in.
-
-    If the server was off at that time, it catches up within two days. A failure is retried
-    30 minutes later.
-    """
     retry_at: dict[int, datetime] = {}
     while True:
         try:
@@ -169,7 +167,6 @@ async def weekly_scheduler():
                 try:
                     await run_analysis(p["id"], day, "weekly", send=True)
                 except HTTPException as exc:
-                    # No weigh-in this week: nothing to do until next week. Busy or failed: try again soon.
                     later = timedelta(days=3) if exc.detail == NO_WEIGH_INS else timedelta(minutes=30)
                     retry_at[p["id"]] = now + later
                 except Exception:
@@ -186,7 +183,7 @@ async def lifespan(app):
     if SCANNER:
         tasks.append(asyncio.create_task(listener.run()))
     else:
-        log.info("BLE scanner disabled (MISCALE_SCANNER=off)")
+        log.info("BLE scanner disabled (YUNMAI_SCANNER=off)")
     if analysis.enabled():
         tasks.append(asyncio.create_task(weekly_scheduler()))
         log.info("weekly AI analysis on: %s at %s, every %s at %02d:00", ", ".join(analysis.MODELS), analysis.BASE_URL,
@@ -196,7 +193,7 @@ async def lifespan(app):
         task.cancel()
 
 
-app = FastAPI(title="Mi Scale Dashboard", lifespan=lifespan)
+app = FastAPI(title="Yunmai Scale Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -205,7 +202,6 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
-# PWA files live at the root so the service worker controls the whole site.
 @app.get("/manifest.webmanifest", include_in_schema=False)
 def manifest():
     return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json",
@@ -223,6 +219,7 @@ def favicon():
 
 
 @app.get("/api/ping")
+@app.get("/health")
 def ping():
     return {"ok": True}
 
@@ -312,7 +309,6 @@ def delete_profile(pid: int):
 
 @app.put("/api/profiles/{pid}/photo")
 async def upload_photo(pid: int, request: Request):
-    """Profile photo as the raw request body (the browser already crops and shrinks it)."""
     if not db.profile(pid):
         raise HTTPException(404)
     ext = PHOTO_TYPES.get(request.headers.get("content-type", "").split(";")[0])
@@ -356,13 +352,11 @@ def list_analyses(profile_id: int | None = None, limit: int = 20):
 
 @app.post("/api/analyses/run")
 async def run_analysis_now(profile_id: int, send: bool = False):
-    """Writes the analysis of the last 7 days now. It is notified only with send=true."""
     return await run_analysis(profile_id, date.today(), "manual", send)
 
 
 # ---------- Settings ----------
 def public_settings() -> dict:
-    """Settings plus what the UI needs to know about the weekly analysis (read-only)."""
     return {**settings(), "ai_enabled": analysis.enabled(), "ai_weekday": analysis.WEEKDAY, "ai_hour": analysis.HOUR}
 
 
@@ -385,24 +379,20 @@ def put_settings(patch: SettingsPatch):
 # ---------- Debugging ----------
 @app.get("/api/debug/devices")
 def debug_devices():
-    """Every BLE device the adapter has seen, to find your scale's address."""
     return sorted(listener.devices.values(), key=lambda d: d["seen"], reverse=True)
 
 
 @app.get("/api/debug/packets")
 def debug_packets(limit: int = 100):
-    """Latest raw packets received from the scale."""
     return db.packets(limit)
 
 
 @app.post("/api/debug/simulate")
 async def simulate(weight: float = 75.0, impedance: int = 500):
-    """Plays a fake weigh-in in every open browser. Nothing is saved."""
     pid = guess_profile(db, weight, float(settings()["tolerance_kg"]))
     when = datetime.now().isoformat(timespec="seconds")
 
     def fake(imp):
-        # Same shape as a saved measurement so the screen can show the result; not in the database.
         return {"type": "measurement", "event": "simulated", "measurement": {
             "id": -1, "measured_at": when, "weight_kg": weight, "impedance": imp, "profile_id": pid,
             "metrics": metrics_for(db, pid, weight, imp, when)}}
@@ -439,3 +429,12 @@ async def ws(websocket: WebSocket):
         pass
     finally:
         hub.clients.discard(websocket)
+
+
+@app.websocket("/ws/bridge")
+async def ws_bridge(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        await websocket.close(code=1000)
+    except Exception:
+        pass

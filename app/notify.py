@@ -1,9 +1,6 @@
-"""Optional notification for every new weigh-in (and the weekly analysis): a generic webhook and/or Telegram.
+"""Optional notification for every new weigh-in (and the weekly analysis): a generic webhook and/or Telegram."""
 
-- MISCALE_WEBHOOK_URL: receives a JSON POST with the text and the measurement (works with
-  n8n, Node-RED, Home Assistant webhooks, Gotify bridges...).
-- MISCALE_TELEGRAM_TOKEN + MISCALE_TELEGRAM_CHAT_ID: sends the text with your own bot.
-"""
+from __future__ import annotations
 
 import asyncio
 import json
@@ -13,13 +10,13 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
-log = logging.getLogger("miscale.notify")
+log = logging.getLogger("yunmai.notify")
 
-WEBHOOK = os.environ.get("MISCALE_WEBHOOK_URL", "")
-TELEGRAM_TOKEN = os.environ.get("MISCALE_TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT = os.environ.get("MISCALE_TELEGRAM_CHAT_ID", "")
-PUBLIC_URL = os.environ.get("MISCALE_PUBLIC_URL", "")
-LANG = os.environ.get("MISCALE_LANG", "en")
+WEBHOOK = os.environ.get("YUNMAI_WEBHOOK_URL") or os.environ.get("MISCALE_WEBHOOK_URL", "")
+TELEGRAM_TOKEN = os.environ.get("YUNMAI_TELEGRAM_TOKEN") or os.environ.get("MISCALE_TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT = os.environ.get("YUNMAI_TELEGRAM_CHAT_ID") or os.environ.get("MISCALE_TELEGRAM_CHAT_ID", "")
+PUBLIC_URL = os.environ.get("YUNMAI_PUBLIC_URL") or os.environ.get("MISCALE_PUBLIC_URL", "")
+LANG = os.environ.get("YUNMAI_LANG") or os.environ.get("MISCALE_LANG", "en")
 LB = 0.45359237
 
 TEXT = {
@@ -34,6 +31,18 @@ TEXT = {
         "no_height": "Set height and birth date in the profile to see body composition.",
         "date": "%b %d %H:%M",
         "analysis": "🧠 Weekly analysis · {name} ({start} – {end})", "day": "%b %d",
+    },
+    "es": {
+        "unknown": "⚖️ Pesaje de {w} sin asignar: el peso no coincide con ningún perfil.\nSelecciona a la persona en el historial.",
+        "since": "{d} desde {when}", "avg": "media 7 días {w}",
+        "fat": "Grasa {fat}% ({mass}) · Músculo {muscle}",
+        "water": "Agua {water}% · Proteína {protein}% · Hueso {bone}",
+        "bmi": "IMC {bmi} · Grasa visceral {visceral} · Metabolismo basal {bmr} kcal",
+        "impedance": "Impedancia {imp} Ω",
+        "no_impedance": "Sin impedancia (súbete descalzo y espera a que termine la medición).",
+        "no_height": "Configura altura y fecha de nacimiento en el perfil para ver la composición corporal.",
+        "date": "%d/%m %H:%M",
+        "analysis": "🧠 Análisis semanal · {name} ({start} a {end})", "day": "%d/%m",
     },
     "pt-BR": {
         "unknown": "⚖️ Pesagem de {w} sem dono: o peso não bate com nenhum perfil.\nEscolha a pessoa no histórico.",
@@ -56,7 +65,7 @@ def enabled() -> bool:
 
 def _num(v, d=1, lang=LANG):
     s = f"{v:,.{d}f}"
-    if lang.startswith("pt"):
+    if lang.startswith("pt") or lang.startswith("es"):
         s = s.replace(",", "X").replace(".", ",").replace("X", ".")
     return s
 
@@ -67,7 +76,8 @@ def _mass(kg, unit, d=1, lang=LANG):
 
 def message(m: dict, profile: dict | None, history: list[dict], unit: str = "kg", lang: str = LANG) -> str:
     """`history` holds the same person's previous measurements, newest first."""
-    t = TEXT.get(lang, TEXT["en"])
+    lang_key = "es" if lang.startswith("es") else ("pt-BR" if lang.startswith("pt") else "en")
+    t = TEXT.get(lang_key, TEXT["en"])
     x = m.get("metrics") or {}
     if not profile:
         lines = [t["unknown"].format(w=_mass(m["weight_kg"], unit, 2, lang))]
@@ -109,7 +119,8 @@ def message(m: dict, profile: dict | None, history: list[dict], unit: str = "kg"
 
 
 def analysis_message(a: dict, profile: dict, lang: str = LANG) -> str:
-    t = TEXT.get(lang, TEXT["en"])
+    lang_key = "es" if lang.startswith("es") else ("pt-BR" if lang.startswith("pt") else "en")
+    t = TEXT.get(lang_key, TEXT["en"])
     start, end = (datetime.fromisoformat(a[k]).strftime(t["day"]) for k in ("week_start", "week_end"))
     lines = [t["analysis"].format(name=profile["name"], start=start, end=end), "", a["text"]]
     if PUBLIC_URL:
