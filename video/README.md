@@ -6,8 +6,7 @@ built with code, so anyone can change it and render it again.
 - `out/miscale-dashboard.mp4`: 1920x1080, 30 fps, H.264 + AAC
 - `out/miscale-dashboard-vertical.mp4`: 1080x1920 for Reels, Shorts and TikTok
 
-The rendered landscape video is also committed at
-[`docs/video/miscale-dashboard.mp4`](../docs/video/miscale-dashboard.mp4).
+The landscape cut is on YouTube, unlisted: <https://youtu.be/ajvoJN0Qh_4>. The main README links to it.
 
 ## Render
 
@@ -21,8 +20,8 @@ npm run render
 
 `npm run render` writes the soundtrack (`scripts/make_music.mjs`) and then renders both
 cuts into `out/`. It takes a few minutes; the 3D scenes render with WebGL through ANGLE
-(`remotion.config.ts`). `npm run docs` then refreshes the smaller copy (CRF 23, ~12 MB) and the
-poster frame in `docs/video/` that the main README links to.
+(`remotion.config.ts`). `npm run docs` then refreshes the poster frame
+(`docs/video/poster.jpg`) that the main README shows as the video preview.
 
 Other commands:
 

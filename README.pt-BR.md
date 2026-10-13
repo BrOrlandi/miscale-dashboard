@@ -32,12 +32,11 @@ por trás. O que você mudar fica só na página e some quando ela é recarregad
 
 ## Vídeo de apresentação
 
-[![Vídeo de apresentação: uma pesagem, o painel, a análise semanal com IA e as notificações no celular](docs/video/poster.jpg)](docs/video/miscale-dashboard.mp4)
+[![Vídeo de apresentação: uma pesagem, o painel, a análise semanal com IA e as notificações no celular](docs/video/poster.jpg)](https://youtu.be/ajvoJN0Qh_4)
 
-Um vídeo de 40 segundos sobre o projeto, em inglês e com música:
-[docs/video/miscale-dashboard.mp4](docs/video/miscale-dashboard.mp4) (1920x1080). Ele é feito com
-código, como o resto do repositório: as cenas em 3D, as gravações da demonstração e a trilha
-sonora são geradas a partir de [video/](video/README.md).
+**[▶ Assista ao vídeo de apresentação no YouTube](https://youtu.be/ajvoJN0Qh_4)**: 40 segundos, em inglês,
+com música, em 1920x1080. Ele é feito com código, como o resto do repositório: as cenas em 3D,
+as gravações da demonstração e a trilha sonora são geradas a partir de [video/](video/README.md).
 
 ## Recursos
 

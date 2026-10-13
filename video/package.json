@@ -10,7 +10,7 @@
     "studio": "npm run music && remotion studio",
     "render": "npm run music && remotion render Promo out/miscale-dashboard.mp4 && remotion render PromoVertical out/miscale-dashboard-vertical.mp4",
     "stills": "node scripts/stills.mjs",
-    "docs": "remotion ffmpeg -y -loglevel error -i out/miscale-dashboard.mp4 -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart ../docs/video/miscale-dashboard.mp4 && remotion ffmpeg -y -loglevel error -i out/miscale-dashboard.mp4 -ss 9.067 -vf scale=1280:-1 -frames:v 1 -q:v 3 ../docs/video/poster.jpg"
+    "docs": "remotion ffmpeg -y -loglevel error -i out/miscale-dashboard.mp4 -ss 9.067 -vf scale=1280:-1 -frames:v 1 -q:v 3 ../docs/video/poster.jpg"
   },
   "dependencies": {
     "@react-three/fiber": "9.8.1",
