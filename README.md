@@ -67,6 +67,10 @@ the recordings of the live demo and the soundtrack are all generated from [video
 
 **Xiaomi Mi Body Composition Scale 2**, model **XMTZC05HM**. It advertises as `MIBFS`.
 
+Where to buy it in Brazil: [Amazon](https://amzn.to/3TPrsph) or
+[Mercado Livre](https://meli.la/2XoPtSb). These are affiliate links: as an Amazon Associate
+and a Mercado Livre affiliate, I earn from qualifying purchases, at no extra cost to you.
+
 The older **Mi Smart Scale 2 (XMTZC04HM)** and other models use a different packet format
 and aren't supported yet. If you have one, a pull request is welcome; see
 [Contributing](#contributing).

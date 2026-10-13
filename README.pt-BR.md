@@ -71,6 +71,10 @@ sonora são geradas a partir de [video/](video/README.md).
 `MIBFS`. A **Mi Smart Scale 2 (XMTZC04HM)** e outros modelos usam outro formato de pacote e
 ainda não são suportados. Contribuições são bem-vindas.
 
+Onde comprar: [Amazon](https://amzn.to/3TPrsph) ou [Mercado Livre](https://meli.la/2XoPtSb).
+São links de afiliado: como Associado da Amazon e afiliado do Mercado Livre, eu ganho com
+compras qualificadas, sem custo extra para você.
+
 ### 2. Um computador com Bluetooth Low Energy perto da balança
 
 Isso é obrigatório. O servidor **precisa ter um adaptador Bluetooth com suporte a BLE** e
