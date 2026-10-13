@@ -1,44 +1,57 @@
-from app.scale import BODY_COMPOSITION, ScaleListener, parse
+from app.scale import ScaleListener, parse, parse_broadcast, parse_gatt_notification
 
-from .packets import packet
-
-
-def test_parse_settling_weight():
-    r = parse(packet(82.8))
-    assert r.weight_kg == 82.8
-    assert not r.stabilized and not r.removed
-    assert r.impedance is None
-    assert r.scale_time == "2026-10-12T07:30:00"
+try:
+    from .packets import broadcast_packet, gatt_measured_packet, gatt_measuring_packet
+except ImportError:
+    from tests.packets import broadcast_packet, gatt_measured_packet, gatt_measuring_packet
 
 
-def test_parse_stabilized_with_impedance():
-    r = parse(packet(82.8, impedance=480, stabilized=True))
-    assert r.stabilized and r.impedance == 480
-
-
-def test_impedance_still_measuring_is_ignored():
-    # While calculating, the scale sends 0xfffe as the impedance.
-    r = parse(packet(82.8, stabilized=True, impedance_raw=0xFFFE))
+def test_parse_broadcast_measuring():
+    r = parse(broadcast_packet(75.5, stabilized=False))
+    assert r is not None
+    assert r.weight_kg == 75.5
+    assert not r.stabilized
     assert r.impedance is None
 
 
-def test_parse_pounds():
-    r = parse(packet(82.8, lbs=True, stabilized=True))
-    assert abs(r.weight_kg - 82.8) < 0.01
+def test_parse_broadcast_stabilized():
+    r = parse(broadcast_packet(75.5, impedance=520, stabilized=True))
+    assert r is not None
+    assert r.weight_kg == 75.5
+    assert r.stabilized
+    assert r.impedance == 520
 
 
-def test_parse_removed_and_wrong_length():
-    assert parse(packet(70, impedance=500, stabilized=True, removed=True)).removed
-    assert parse(b"\x00" * 12) is None
+def test_parse_gatt_measuring():
+    r = parse_gatt_notification(gatt_measuring_packet(72.3))
+    assert r is not None
+    assert r.weight_kg == 72.3
+    assert not r.stabilized
+    assert r.impedance is None
 
 
-def test_listener_dedupes_and_filters_by_address():
+def test_parse_gatt_measured():
+    r = parse_gatt_notification(gatt_measured_packet(72.3, impedance=490, body_fat=18.5))
+    assert r is not None
+    assert r.weight_kg == 72.3
+    assert r.stabilized
+    assert r.impedance == 490
+    assert r.body_fat == 18.5
+
+
+def test_listener_dedupes_and_filters():
     got = []
-    listener = ScaleListener(got.append, address="aa:bb:cc:dd:ee:ff")
-    data = {BODY_COMPOSITION: packet(70, stabilized=True)}
-    listener.handle("AA:BB:CC:DD:EE:FF", "MIBFS", -60, data)
-    listener.handle("AA:BB:CC:DD:EE:FF", "MIBFS", -60, data)    # same advertisement repeated
-    listener.handle("11:22:33:44:55:66", "MIBFS", -60, data)    # another scale
+    listener = ScaleListener(got.append, address="AA:BB:CC:DD:EE:FF")
+    pkt = broadcast_packet(70.0, impedance=500, stabilized=True)
+
+    # 1. Matching address and manufacturer data
+    listener.handle("AA:BB:CC:DD:EE:FF", "YUNMAI-SCALE", -60, {}, manufacturer_data={1: pkt})
+    # Duplicate packet ignored
+    listener.handle("AA:BB:CC:DD:EE:FF", "YUNMAI-SCALE", -60, {}, manufacturer_data={1: pkt})
+    # Other scale ignored
+    listener.handle("11:22:33:44:55:66", "YUNMAI-SCALE", -60, {}, manufacturer_data={1: pkt})
+
     assert len(got) == 1
-    assert got[0].address == "AA:BB:CC:DD:EE:FF" and got[0].rssi == -60
-    assert set(listener.devices) == {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"}
+    assert got[0].address == "AA:BB:CC:DD:EE:FF"
+    assert got[0].weight_kg == 70.0
+    assert got[0].impedance == 500

@@ -1,7 +1,7 @@
 {
-  "name": "Mi Scale Dashboard",
-  "short_name": "Mi Scale",
-  "description": "Live weigh-ins, body composition and history from the Xiaomi Mi Body Composition Scale 2.",
+  "name": "Yunmai Scale Dashboard",
+  "short_name": "Yunmai Scale",
+  "description": "Live weigh-ins, body composition and history from Yunmai smart scales.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

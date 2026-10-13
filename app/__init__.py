@@ -1,0 +1,1 @@
+"""Yunmai Scale Dashboard package."""

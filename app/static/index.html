@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mi Scale Dashboard</title>
-<meta name="description" content="Live weigh-ins, body composition and history from the Xiaomi Mi Body Composition Scale 2.">
+<title>Yunmai Scale Dashboard</title>
+<meta name="description" content="Live weigh-ins, body composition and history from Yunmai smart scales.">
 <meta name="theme-color" content="#f5f5f2">
 <link rel="icon" href="/static/icons/favicon.png" type="image/png">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Mi Scale">
+<meta name="apple-mobile-web-app-title" content="Yunmai Scale">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
   // Apply the saved theme before the first paint, so the page doesn't flash.
@@ -281,7 +281,7 @@ tr.new td { animation: rowIn 2.4s ease; }
 <main>
   <header>
     <div class="toolbar" style="gap:14px">
-      <h1>Mi Scale</h1>
+      <h1>Yunmai Scale</h1>
       <div class="tabs" id="tabs"></div>
     </div>
     <div class="toolbar">
@@ -756,7 +756,7 @@ function renderAnalysis() {
   $("anTitle").textContent = t("analysisTitle");
   if (!settings.ai_enabled) {
     box.className = "analysis off";
-    box.innerHTML = esc(t("analysisOff", { var: "%VAR%" })).replace("%VAR%", "<code>MISCALE_AI_API_KEY</code>") +
+    box.innerHTML = esc(t("analysisOff", { var: "%VAR%" })).replace("%VAR%", "<code>YUNMAI_AI_API_KEY</code>") +
       ` <a href="${esc(t("analysisDocs"))}" target="_blank" rel="noopener">${esc(t("analysisHowTo"))}</a>`;
     return;
   }

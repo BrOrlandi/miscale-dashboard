@@ -1,11 +1,11 @@
 services:
-  miscale:
+  yunmai:
     build: .
-    image: miscale-dashboard:local
-    container_name: miscale-dashboard
+    image: yunmai-dashboard:local
+    container_name: yunmai-dashboard
     restart: unless-stopped
     # Every setting (timezone, notifications, the optional AI weekly analysis with
-    # MISCALE_AI_API_KEY, MISCALE_AI_BASE_URL, MISCALE_AI_MODEL...) goes in .env; see .env.example.
+    # YUNMAI_AI_API_KEY, YUNMAI_AI_BASE_URL, YUNMAI_AI_MODEL...) goes in .env; see .env.example.
     env_file:
       - path: .env
         required: false

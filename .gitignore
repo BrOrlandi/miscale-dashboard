@@ -1,9 +1,10 @@
 __pycache__/
-*.pyc
-.venv/
-.pytest_cache/
-.ruff_cache/
-data/
+*.py[cod]
+*$py.class
 *.db
+*.sqlite
+data/
 .env
-site/
+.venv/
+miscale-dashboard-ref/
+yunmai-3-10.apk

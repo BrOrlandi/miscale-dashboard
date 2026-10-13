@@ -1,10 +1,12 @@
-"""Body composition from weight and impedance.
+"""Body composition from weight and impedance for Yunmai smart scales.
 
-Open formulas used by openScale (MiScaleLib) and by the body_metrics module of the
-wiecosystem project, which reproduce the numbers of Xiaomi's app (Zepp Life).
-They are bioimpedance estimates: good for trends, not exact or medical measurements.
+Implements the bioimpedance formulas used by Yunmai (YunmaiLib in openScale and
+reverse-engineered from the official Yunmai APK).
 """
 
+from __future__ import annotations
+
+import math
 from datetime import date
 
 
@@ -13,80 +15,93 @@ def age_on(birth: date, day: date) -> int:
 
 
 def compute(weight: float, impedance: int | None, height_cm: float, birth: date,
-            male: bool, day: date | None = None) -> dict:
+            male: bool, day: date | None = None, body_fat: float | None = None) -> dict:
     day = day or date.today()
     age = age_on(birth, day)
     h = height_cm
-    sex = 1 if male else 0
-    out = {"bmi": round(weight / (h / 100) ** 2, 1), "age": age}
+    h_m = h / 100.0
 
+    out = {
+        "bmi": round(weight / (h_m ** 2), 1),
+        "age": age,
+    }
+
+    # BMR formula
     if male:
         bmr = 877.8 + weight * 14.916 - h * 0.726 - age * 8.976
-        bmr = 5000 if bmr > 2322 else bmr
     else:
         bmr = 864.6 + weight * 10.2036 - h * 0.39336 - age * 6.204
-        bmr = 5000 if bmr > 2996 else bmr
     out["bmr"] = round(min(max(bmr, 500), 10000))
 
-    if sex == 0:
-        if weight > (13 - h * 0.5) * -1:
-            sub = (h * 1.45 + h * 0.1158 * h) - 120
-            visceral = (weight * 500 / sub - 6) + age * 0.07
-        else:
-            sub = 0.691 + h * -0.0024 + h * -0.0024
-            visceral = ((h * 0.027 - sub * weight) * -1) + age * 0.07 - age
-    else:
-        if h < weight * 1.6:
+    # Visceral fat default if no impedance
+    if not impedance and body_fat is None:
+        if male:
             sub = ((h * 0.4) - (h * (h * 0.0826))) * -1
-            visceral = (weight * 305) / (sub + 48) - 2.9 + age * 0.15
+            vf = (weight * 305) / (sub + 48) - 2.9 + age * 0.15
         else:
-            sub = 0.765 + h * -0.0015
-            visceral = ((h * 0.143 - weight * sub) * -1) + age * 0.15 - 5
-    out["visceral_fat"] = round(min(max(visceral, 1), 50), 1)
-
-    if not impedance:
+            sub = (h * 1.45 + h * 0.1158 * h) - 120
+            vf = (weight * 500 / sub - 6) + age * 0.07
+        out["visceral_fat"] = round(min(max(vf, 1.0), 50.0), 1)
         return out
 
-    lbm_coeff = (h * 9.058 / 100) * (h / 100) + weight * 0.32 + 12.226 - impedance * 0.0068 - age * 0.0542
+    # Body fat calculation (Yunmai algorithm)
+    if body_fat is not None and 5.0 <= body_fat <= 75.0:
+        fat = body_fat
+    elif impedance and impedance > 0:
+        r = (impedance - 100.0) / 100.0
+        if r >= 1.0:
+            r = math.sqrt(r)
+        fat = (weight * 1.5 / (h_m * h_m)) + (age * 0.08)
+        if male:
+            fat -= 10.8
+        fat = (fat - 7.4) + r
+        fat = min(max(fat, 5.0), 75.0)
+    else:
+        return out
 
-    lbm_sub = 0.8
-    if sex == 0:
-        lbm_sub = 9.25 if age <= 49 else 7.25
-    coeff = 1.0
-    if sex == 1 and weight < 61:
-        coeff = 0.98
-    elif sex == 0 and weight > 60:
-        coeff = 0.96 * (1.03 if h > 160 else 1)
-    elif sex == 0 and weight < 50:
-        coeff = 1.02 * (1.03 if h > 160 else 1)
-    fat = (1 - ((lbm_coeff - lbm_sub) * coeff) / weight) * 100
-    if fat > 63:
-        fat = 75
-    fat = min(max(fat, 5), 75)
+    # Water percentage
+    water = (100.0 - fat) * 0.726
 
-    base = 0.245691014 if sex == 0 else 0.18016894
-    bone = (base - lbm_coeff * 0.05158) * -1
-    bone = bone + 0.1 if bone > 2.2 else bone - 0.1
-    if (sex == 0 and bone > 5.1) or (sex == 1 and bone > 5.2):
-        bone = 8
-    bone = min(max(bone, 0.5), 8)
+    # Muscle percentage and mass
+    muscle_pct = (100.0 - fat) * 0.67
+    muscle_mass = weight * (muscle_pct / 100.0)
 
-    muscle = weight - fat * 0.01 * weight - bone
-    if (sex == 0 and muscle >= 84) or (sex == 1 and muscle >= 93.5):
-        muscle = 120
+    # Bone mass (kg)
+    h_diff = h - 170.0
+    if male:
+        bone = ((weight * (muscle_pct / 100.0) * 4.0) / 7.0 * 0.22 * 0.6) + (h_diff / 100.0)
+    else:
+        bone = ((weight * (muscle_pct / 100.0) * 4.0) / 7.0 * 0.34 * 0.45) + (h_diff / 100.0)
+    bone = min(max(bone, 0.5), 8.0)
 
-    water = (100 - fat) * 0.7
-    water *= 1.02 if water < 50 else 0.98
+    # Visceral fat index (Yunmai formula)
+    a = min(max(age, 18), 120)
+    if male:
+        f_offset = 21.0 if a < 40 else (22.0 if a < 60 else 24.0)
+        f_val = fat - f_offset
+        d = 1.1 if f_val > 0 else 1.4
+    else:
+        f_offset = 34.0 if a < 40 else (35.0 if a < 60 else 36.0)
+        f_val = fat - f_offset
+        d = 1.1 if f_val > 0 else 1.8
+    vf = (f_val / d) + 9.5
+    visceral = min(max(vf, 1.0), 30.0)
 
-    protein = muscle / weight * 100 - water
+    # Protein percentage
+    protein = max(muscle_pct - water, 5.0)
+
+    # Lean mass
+    lean_mass = weight * (100.0 - fat) / 100.0
+    fat_mass = weight * fat / 100.0
 
     out.update({
         "body_fat": round(fat, 1),
-        "fat_mass": round(weight * fat / 100, 2),
-        "muscle_mass": round(muscle, 2),
+        "fat_mass": round(fat_mass, 2),
+        "muscle_mass": round(muscle_mass, 2),
         "bone_mass": round(bone, 2),
         "water": round(water, 1),
         "protein": round(protein, 1),
-        "lean_mass": round(weight - weight * fat / 100, 2),
+        "visceral_fat": round(visceral, 1),
+        "lean_mass": round(lean_mass, 2),
     })
     return out
