@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from . import analysis, notify
 from .db import DB
-from .scale import Reading, ScaleListener
+from .scale import Reading, ScaleListener, parse
 from .session import DEFAULT_TOLERANCE_KG, Session, guess_profile, metrics_for
 
 logging.basicConfig(level=os.environ.get("MISCALE_LOG_LEVEL", "INFO"),
@@ -26,7 +26,7 @@ STATIC = Path(__file__).parent / "static"
 DB_PATH = os.environ.get("MISCALE_DB", "/data/miscale.db")
 PHOTOS = Path(DB_PATH).parent / "photos"
 PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-SCANNER = os.environ.get("MISCALE_SCANNER", "on").lower() not in ("off", "0", "false", "no")
+SCANNER = os.environ.get("MISCALE_SCANNER", "off").lower() in ("on", "1", "true", "yes")
 # How long to wait for the impedance before sending the notification.
 NOTIFY_WAIT = float(os.environ.get("MISCALE_NOTIFY_WAIT", "25"))
 
@@ -380,6 +380,59 @@ class SettingsPatch(BaseModel):
 def put_settings(patch: SettingsPatch):
     db.set_settings(patch.model_dump(exclude_none=True))
     return public_settings()
+
+
+# ---------- Remote scale data (ESP32 / LAN) ----------
+class RawPacket(BaseModel):
+    raw: str
+    address: str = ""
+    rssi: int | None = None
+
+
+@app.post("/api/scale/raw")
+@app.post("/api/raw")
+async def receive_raw_scale_packet(packet: RawPacket):
+    """Receives raw BLE broadcast advertisement packets from an external reader (e.g. ESP32)."""
+    try:
+        data = bytes.fromhex(packet.raw)
+    except ValueError:
+        raise HTTPException(400, "invalid hex string in raw payload")
+
+    reading = parse(data)
+    if reading is None:
+        return {"status": "ignored", "reason": "invalid payload"}
+
+    addr = packet.address.upper() if packet.address else ""
+    if listener.address and addr and addr != listener.address:
+        return {"status": "ignored", "reason": "mac filter mismatch"}
+
+    reading.address = addr
+    reading.rssi = packet.rssi
+    listener.last_seen = datetime.now()
+
+    if addr:
+        listener.devices[addr] = {
+            "address": addr,
+            "name": "MIBFS (via ESP32)",
+            "rssi": packet.rssi,
+            "service_data": {"0000181b-0000-1000-8000-00805f9b34fb": packet.raw.lower()},
+            "manufacturer": {},
+            "uuids": ["0000181b-0000-1000-8000-00805f9b34fb"],
+            "seen": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    # Deduplicate repeated packets
+    if listener.last_raw.get(addr) == reading.raw:
+        return {"status": "duplicate"}
+    listener.last_raw[addr] = reading.raw
+
+    on_reading(reading)
+    return {
+        "status": "ok",
+        "weight_kg": reading.weight_kg,
+        "stabilized": reading.stabilized,
+        "impedance": reading.impedance,
+    }
 
 
 # ---------- Debugging ----------
