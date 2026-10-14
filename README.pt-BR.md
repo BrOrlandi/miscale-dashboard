@@ -74,22 +74,29 @@ Onde comprar: [Amazon](https://amzn.to/3TPrsph) ou [Mercado Livre](https://meli.
 São links de afiliado: como Associado da Amazon e afiliado do Mercado Livre, eu ganho com
 compras qualificadas, sem custo extra para você.
 
-### 2. Um computador com Bluetooth Low Energy perto da balança
+### 2. Uma forma de ler as transmissões Bluetooth da balança
 
-Isso é obrigatório. O servidor **precisa ter um adaptador Bluetooth com suporte a BLE** e
-ficar ao alcance do Bluetooth da balança, normalmente no mesmo cômodo ou no do lado. A
-balança não pareia nem conecta: ela só transmite enquanto alguém está em cima, e o servidor
-precisa ouvir essas transmissões diretamente.
+A balança não pareia nem conecta: ela só transmite anúncios Bluetooth Low Energy (BLE) enquanto
+alguém está em cima. Você tem duas opções para receber esses dados:
 
-Hardware que funciona, ou deve funcionar:
+#### Opção A (Recomendada): Gateway Wi-Fi com ESP32
+Use um microcontrolador ESP32 barato (como o **LOLIN C3 Mini**, ESP32 DevKit, etc.) instalado
+ao alcance do Bluetooth da balança. O ESP32 escuta os broadcasts e envia os pacotes brutos via
+HTTP POST pela rede Wi-Fi para o servidor.
 
-- Raspberry Pi 3, 4, 5 ou Zero 2 W (Bluetooth embutido)
-- Mini PCs e NUCs com placa Intel de Wi-Fi + Bluetooth (AX200, AX201, AX210...). O projeto
-  foi feito num Intel N100 com AX201.
-- Qualquer Linux com um adaptador USB Bluetooth 4.0 ou mais novo
+- **Servidor em qualquer lugar da rede:** O servidor do dashboard pode rodar em qualquer máquina
+  (NAS, Docker, VM, Windows, Mac ou Linux), mesmo sem adaptador Bluetooth.
+- **Portal Cativo Integrado:** Conecte o celular ou PC à rede Wi-Fi `MiScale-Setup-XXXX`
+  para configurar o nome da sua rede Wi-Fi, senha, IP do servidor e porta (`8800`) direto pelo navegador.
+- **Sem permissões Bluetooth no Docker:** Não precisa de `/run/dbus` nem `apparmor=unconfined`.
+- Veja o [Guia do ESP32](esp32/README.md) para detalhes do firmware.
 
-O ambiente suportado é **Linux com BlueZ** (o Bluetooth padrão do Ubuntu, do Debian e do
-Raspberry Pi OS). Confira se o host enxerga dispositivos BLE:
+#### Opção B: Bluetooth Low Energy direto no computador do servidor
+O próprio servidor possui adaptador Bluetooth 4.0+ e fica no mesmo cômodo da balança.
+Hardware suportado: Raspberry Pi 3/4/5/Zero 2 W, mini PCs com placa Intel AX200/AX201, ou dongle USB.
+Requer **Linux com BlueZ** e a variável `MISCALE_SCANNER=on` no `.env`.
+
+Confira se o host enxerga dispositivos BLE:
 
 ```bash
 bluetoothctl show            # deve listar um controlador com "Powered: yes"
