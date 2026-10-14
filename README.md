@@ -75,24 +75,37 @@ The older **Mi Smart Scale 2 (XMTZC04HM)** and other models use a different pack
 and aren't supported yet. If you have one, a pull request is welcome; see
 [Contributing](#contributing).
 
-### 2. A computer with Bluetooth Low Energy, near the scale
+### 2. A way to read Bluetooth broadcasts from the scale
 
-This is a hard requirement. The server **must have a BLE-capable Bluetooth adapter** and be
-within Bluetooth range of the scale, usually the same room or the one next to it. The scale
-doesn't pair or connect to anything: it only broadcasts while someone is standing on it, and
-the server has to hear those broadcasts directly.
+The scale does not pair or connect to anything: it only broadcasts Bluetooth Low Energy (BLE)
+advertisements while someone is standing on it. You have two options for capturing these
+broadcasts:
 
-Hardware known to work, or that should work:
+#### Option A (Recommended): An ESP32 Wi-Fi Gateway
+Use an inexpensive ESP32 microcontroller (such as the **LOLIN C3 Mini**, ESP32 DevKit, etc.)
+placed within Bluetooth range of the scale. The ESP32 listens for the scale's broadcasts and
+forwards the raw packets over Wi-Fi via HTTP POST to the dashboard server.
 
+- **Server anywhere on LAN:** Your dashboard server can run anywhere on your local network
+  (NAS, Docker, VM, Windows, macOS, or Linux) without needing Bluetooth hardware.
+- **Built-in Captive Portal:** Connect to the `MiScale-Setup-XXXX` Wi-Fi hotspot on your
+  phone or PC to configure your network SSID, password, server IP, and port (`8800`) directly
+  from your browser.
+- **No container Bluetooth permissions:** Docker does not need `/run/dbus` or
+  `apparmor=unconfined`.
+- See the [ESP32 Setup Guide](esp32/README.md) for firmware and flashing instructions.
+
+#### Option B: Direct Bluetooth Low Energy on the server host
+The server itself has a BLE-capable Bluetooth adapter and is within Bluetooth range of the
+scale (usually the same room or the one next to it).
+
+Hardware known to work:
 - Raspberry Pi 3, 4, 5 or Zero 2 W (built-in Bluetooth)
-- Mini PCs and NUCs with an Intel Wi-Fi + Bluetooth card (AX200, AX201, AX210...). It was
-  developed on an Intel N100 with an AX201.
+- Mini PCs and NUCs with an Intel Wi-Fi + Bluetooth card (AX200, AX201, AX210...)
 - Any Linux machine with a USB Bluetooth 4.0+ dongle
 
 The supported setup is **Linux with BlueZ** (the standard Bluetooth stack on Ubuntu, Debian
-and Raspberry Pi OS). The Docker container talks to the host's BlueZ over D-Bus. The scanner
-is built on [bleak](https://github.com/hbldh/bleak), so macOS and Windows may work when you
-run it without Docker, but they aren't tested.
+and Raspberry Pi OS). To enable direct host scanning, set `MISCALE_SCANNER=on` in `.env`.
 
 Check that the host can see Bluetooth LE devices:
 
@@ -192,7 +205,7 @@ unit, the language and the tolerance for recognizing people are changed in the w
 | `MISCALE_AI_ENABLED` | empty | `true` turns the analysis on without a key (local Ollama) |
 | `MISCALE_AI_WEEKDAY` / `MISCALE_AI_HOUR` | `5` / `9` | When the weekly analysis runs (0 = Monday; default Saturday 9:00) |
 | `MISCALE_AI_LANG` | `MISCALE_LANG` | Language of the analysis: `en` or `pt-BR` |
-| `MISCALE_SCANNER` | `on` | `off` disables Bluetooth (development and demos) |
+| `MISCALE_SCANNER` | `off` | `off` allows using the ESP32 Wi-Fi gateway (default). `on` enables direct host Bluetooth |
 | `MISCALE_LOG_LEVEL` | `INFO` | Python log level |
 
 ### Finding your scale's address
@@ -326,6 +339,9 @@ groups packets into one measurement by weight (±0.1 kg) and arrival time (3 min
 the scale's timestamp.
 
 ```
+esp32/
+  miscale_reader/
+    miscale_reader.ino  ESP32 BLE-to-Wi-Fi gateway firmware with Captive Portal
 app/
   scale.py      BLE scanner (bleak) and packet parser
   session.py    groups packets into measurements, picks the profile
@@ -337,9 +353,10 @@ app/
   static/       the dashboard (one HTML file, no build step)
 ```
 
-The REST API is documented at `/docs` (OpenAPI). The browser gets live packets, new
-measurements and the weekly analysis (piece by piece, as the model writes it) over the `/ws`
-WebSocket.
+Packets can be captured either directly by the host's Bluetooth adapter (`scale.py`) or
+forwarded over Wi-Fi by an ESP32 gateway (`POST /api/scale/raw`). The REST API is documented
+at `/docs` (OpenAPI). The browser gets live packets, new measurements and the weekly
+analysis (piece by piece, as the model writes it) over the `/ws` WebSocket.
 
 ## Development
 
